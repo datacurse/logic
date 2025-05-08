@@ -35,6 +35,18 @@ type NegatedImplication = Negation & { formula: Implication };
 type DoubleNegation = Negation & { formula: Negation };
 type NegatedConjunction = Negation & { formula: Conjunction };
 
+export const isNegatedDisjunction = (f: Formula): f is NegatedDisjunction =>
+  isNegation(f) && isDisjunction(f.formula);
+
+export const isNegatedImplication = (f: Formula): f is NegatedImplication =>
+  isNegation(f) && isImplication(f.formula);
+
+export const isDoubleNegation = (f: Formula): f is DoubleNegation =>
+  isNegation(f) && isNegation(f.formula);
+
+export const isNegatedConjunction = (f: Formula): f is NegatedConjunction =>
+  isNegation(f) && isConjunction(f.formula);
+
 // ================ Type Guards ===================
 
 export const isProposition = (f: Formula): f is Proposition => f.type === 'proposition';
@@ -84,19 +96,19 @@ const formulaRules: FormulaRule[] = [
   {
     ruleType: 'alpha',
     description: 'Negated disjunction: ¬(p ∨ q) ↔ ¬p ∧ ¬q',
-    matches: (f): f is NegatedDisjunction => isNegation(f) && isDisjunction(f.formula),
+    matches: isNegatedDisjunction,
     getComponents: (f: NegatedDisjunction) => [not(f.formula.left), not(f.formula.right)],
   },
   {
     ruleType: 'alpha',
     description: 'Negated implication: ¬(p → q) ↔ p ∧ ¬q',
-    matches: (f): f is NegatedImplication => isNegation(f) && isImplication(f.formula),
+    matches: isNegatedImplication,
     getComponents: (f: NegatedImplication) => [f.formula.left, not(f.formula.right)],
   },
   {
     ruleType: 'alpha',
     description: 'Double negation: ¬¬p ↔ p',
-    matches: (f): f is DoubleNegation => isNegation(f) && isNegation(f.formula),
+    matches: isDoubleNegation,
     getComponents: (f: DoubleNegation) => [f.formula.formula],
   },
   {
@@ -114,7 +126,7 @@ const formulaRules: FormulaRule[] = [
   {
     ruleType: 'beta',
     description: 'Negated conjunction: ¬(p ∧ q) ↔ ¬p ∨ ¬q',
-    matches: (f): f is NegatedConjunction => isNegation(f) && isConjunction(f.formula),
+    matches: isNegatedConjunction,
     getComponents: (f: NegatedConjunction) => [not(f.formula.left), not(f.formula.right)],
   },
 ];
