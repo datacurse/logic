@@ -78,46 +78,34 @@ type NegatedUniversal = Negation & { formula: Universal };
 type NegatedExistential = Negation & { formula: Existential };
 type NegatedBiconditional = Negation & { formula: Biconditional };
 
-// String prototype extension for hashing
-declare global {
-  interface String {
-    hashCode(): number;
-  }
+function createTypeGuard<T extends Formula | Term>(type: T['type']): (f: Formula | Term) => f is T {
+  return (f: Formula | Term): f is T => f != null && typeof f === 'object' && f.type === type;
 }
 
-// ================ Type Guards ===================
+function createNegatedTypeGuard<T extends Formula>(
+  isInnerType: (f: Formula) => f is T
+): (f: Formula) => f is Negation & { formula: T } {
+  return (f: Formula): f is Negation & { formula: T } => isNegation(f) && isInnerType(f.formula);
+}
 
-export const isProposition = (f: Formula): f is Proposition => f.type === 'proposition';
-export const isNegation = (f: Formula): f is Negation => f.type === 'negation';
-export const isConjunction = (f: Formula): f is Conjunction => f.type === 'conjunction';
-export const isDisjunction = (f: Formula): f is Disjunction => f.type === 'disjunction';
-export const isImplication = (f: Formula): f is Implication => f.type === 'implication';
-export const isBiconditional = (f: Formula): f is Biconditional => f.type === 'biconditional';
-export const isPredicate = (f: Formula): f is Predicate => f.type === 'predicate';
-export const isUniversal = (f: Formula): f is Universal => f.type === 'universal';
-export const isExistential = (f: Formula): f is Existential => f.type === 'existential';
-export const isTerm = (t: any): t is Term => t && typeof t === 'object' && t.type === 'term';
+export const isProposition = createTypeGuard<Proposition>('proposition');
+export const isNegation = createTypeGuard<Negation>('negation');
+export const isConjunction = createTypeGuard<Conjunction>('conjunction');
+export const isDisjunction = createTypeGuard<Disjunction>('disjunction');
+export const isImplication = createTypeGuard<Implication>('implication');
+export const isBiconditional = createTypeGuard<Biconditional>('biconditional');
+export const isPredicate = createTypeGuard<Predicate>('predicate');
+export const isUniversal = createTypeGuard<Universal>('universal');
+export const isExistential = createTypeGuard<Existential>('existential');
+export const isTerm = createTypeGuard<Term>('term');
 
-export const isNegatedDisjunction = (f: Formula): f is NegatedDisjunction =>
-  isNegation(f) && isDisjunction(f.formula);
-
-export const isNegatedImplication = (f: Formula): f is NegatedImplication =>
-  isNegation(f) && isImplication(f.formula);
-
-export const isDoubleNegation = (f: Formula): f is DoubleNegation =>
-  isNegation(f) && isNegation(f.formula);
-
-export const isNegatedConjunction = (f: Formula): f is NegatedConjunction =>
-  isNegation(f) && isConjunction(f.formula);
-
-export const isNegatedUniversal = (f: Formula): f is NegatedUniversal =>
-  isNegation(f) && isUniversal(f.formula);
-
-export const isNegatedExistential = (f: Formula): f is NegatedExistential =>
-  isNegation(f) && isExistential(f.formula);
-
-export const isNegatedBiconditional = (f: Formula): f is NegatedBiconditional =>
-  isNegation(f) && isBiconditional(f.formula);
+export const isDoubleNegation = createNegatedTypeGuard<Negation>(isNegation);
+export const isNegatedConjunction = createNegatedTypeGuard<Conjunction>(isConjunction);
+export const isNegatedDisjunction = createNegatedTypeGuard<Disjunction>(isDisjunction);
+export const isNegatedImplication = createNegatedTypeGuard<Implication>(isImplication);
+export const isNegatedBiconditional = createNegatedTypeGuard<Biconditional>(isBiconditional);
+export const isNegatedUniversal = createNegatedTypeGuard<Universal>(isUniversal);
+export const isNegatedExistential = createNegatedTypeGuard<Existential>(isExistential);
 
 // ================ Formula Creation Helpers ===================
 
