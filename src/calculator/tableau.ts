@@ -1,64 +1,64 @@
 // ================ Formula Types ===================
 
-export interface Proposition {
+interface Proposition {
   type: 'proposition';
   symbol: string;
 }
 
-export interface Negation {
+interface Negation {
   type: 'negation';
   formula: Formula;
 }
 
-export interface Conjunction {
+interface Conjunction {
   type: 'conjunction';
   left: Formula;
   right: Formula;
 }
 
-export interface Disjunction {
+interface Disjunction {
   type: 'disjunction';
   left: Formula;
   right: Formula;
 }
 
-export interface Implication {
+interface Implication {
   type: 'implication';
   left: Formula;
   right: Formula;
 }
 
-export interface Biconditional {
+interface Biconditional {
   type: 'biconditional';
   left: Formula;
   right: Formula;
 }
 
 // First-order logic types
-export interface Term {
+interface Term {
   type: 'term';
   symbol: string;
 }
 
-export interface Predicate {
+interface Predicate {
   type: 'predicate';
   symbol: string;
   terms: Term[];
 }
 
-export interface Universal {
+interface Universal {
   type: 'universal';
   variable: string;
   formula: Formula;
 }
 
-export interface Existential {
+interface Existential {
   type: 'existential';
   variable: string;
   formula: Formula;
 }
 
-export type Formula =
+type Formula =
   | Proposition
   | Negation
   | Conjunction
@@ -88,63 +88,63 @@ function createNegatedTypeGuard<T extends Formula>(
   return (f: Formula): f is Negation & { formula: T } => isNegation(f) && isInnerType(f.formula);
 }
 
-export const isProposition = createTypeGuard<Proposition>('proposition');
-export const isNegation = createTypeGuard<Negation>('negation');
-export const isConjunction = createTypeGuard<Conjunction>('conjunction');
-export const isDisjunction = createTypeGuard<Disjunction>('disjunction');
-export const isImplication = createTypeGuard<Implication>('implication');
-export const isBiconditional = createTypeGuard<Biconditional>('biconditional');
-export const isPredicate = createTypeGuard<Predicate>('predicate');
-export const isUniversal = createTypeGuard<Universal>('universal');
-export const isExistential = createTypeGuard<Existential>('existential');
-export const isTerm = createTypeGuard<Term>('term');
+const isProposition = createTypeGuard<Proposition>('proposition');
+const isNegation = createTypeGuard<Negation>('negation');
+const isConjunction = createTypeGuard<Conjunction>('conjunction');
+const isDisjunction = createTypeGuard<Disjunction>('disjunction');
+const isImplication = createTypeGuard<Implication>('implication');
+const isBiconditional = createTypeGuard<Biconditional>('biconditional');
+const isPredicate = createTypeGuard<Predicate>('predicate');
+const isUniversal = createTypeGuard<Universal>('universal');
+const isExistential = createTypeGuard<Existential>('existential');
+const isTerm = createTypeGuard<Term>('term');
 
-export const isDoubleNegation = createNegatedTypeGuard<Negation>(isNegation);
-export const isNegatedConjunction = createNegatedTypeGuard<Conjunction>(isConjunction);
-export const isNegatedDisjunction = createNegatedTypeGuard<Disjunction>(isDisjunction);
-export const isNegatedImplication = createNegatedTypeGuard<Implication>(isImplication);
-export const isNegatedBiconditional = createNegatedTypeGuard<Biconditional>(isBiconditional);
-export const isNegatedUniversal = createNegatedTypeGuard<Universal>(isUniversal);
-export const isNegatedExistential = createNegatedTypeGuard<Existential>(isExistential);
+const isDoubleNegation = createNegatedTypeGuard<Negation>(isNegation);
+const isNegatedConjunction = createNegatedTypeGuard<Conjunction>(isConjunction);
+const isNegatedDisjunction = createNegatedTypeGuard<Disjunction>(isDisjunction);
+const isNegatedImplication = createNegatedTypeGuard<Implication>(isImplication);
+const isNegatedBiconditional = createNegatedTypeGuard<Biconditional>(isBiconditional);
+const isNegatedUniversal = createNegatedTypeGuard<Universal>(isUniversal);
+const isNegatedExistential = createNegatedTypeGuard<Existential>(isExistential);
 
 // ================ Formula Creation Helpers ===================
 
-export const prop = (symbol: string): Proposition => ({ type: 'proposition', symbol });
-export const not = (formula: Formula): Negation => ({ type: 'negation', formula });
-export const and = (left: Formula, right: Formula): Conjunction => ({
+const prop = (symbol: string): Proposition => ({ type: 'proposition', symbol });
+const not = (formula: Formula): Negation => ({ type: 'negation', formula });
+const and = (left: Formula, right: Formula): Conjunction => ({
   type: 'conjunction',
   left,
   right,
 });
-export const or = (left: Formula, right: Formula): Disjunction => ({
+const or = (left: Formula, right: Formula): Disjunction => ({
   type: 'disjunction',
   left,
   right,
 });
-export const implies = (left: Formula, right: Formula): Implication => ({
+const implies = (left: Formula, right: Formula): Implication => ({
   type: 'implication',
   left,
   right,
 });
-export const iff = (left: Formula, right: Formula): Biconditional => ({
+const iff = (left: Formula, right: Formula): Biconditional => ({
   type: 'biconditional',
   left,
   right,
 });
 
 // First-order logic helpers
-export const term = (symbol: string): Term => ({ type: 'term', symbol });
-export const predicate = (symbol: string, terms: Term[]): Predicate => ({
+const term = (symbol: string): Term => ({ type: 'term', symbol });
+const predicate = (symbol: string, terms: Term[]): Predicate => ({
   type: 'predicate',
   symbol,
   terms,
 });
-export const forAll = (variable: string, formula: Formula): Universal => ({
+const forAll = (variable: string, formula: Formula): Universal => ({
   type: 'universal',
   variable,
   formula,
 });
-export const exists = (variable: string, formula: Formula): Existential => ({
+const exists = (variable: string, formula: Formula): Existential => ({
   type: 'existential',
   variable,
   formula,
@@ -152,7 +152,7 @@ export const exists = (variable: string, formula: Formula): Existential => ({
 
 // ================ Term Utilities ===================
 
-export function extractTerms(formulas: Formula[]): Term[] {
+function extractTerms(formulas: Formula[]): Term[] {
   const symbols = new Set<string>();
   const result: Term[] = [];
 
@@ -184,7 +184,7 @@ export function extractTerms(formulas: Formula[]): Term[] {
   return result;
 }
 
-export function freshConstant(existingTerms: Term[]): Term {
+function freshConstant(existingTerms: Term[]): Term {
   const symbols = new Set(existingTerms.map((t) => t.symbol));
   let counter = 1;
   let symbol = `c${counter}`;
@@ -199,7 +199,7 @@ export function freshConstant(existingTerms: Term[]): Term {
 
 // ================ Substitution ===================
 
-export function substitute(formula: Formula, variable: string, termToSubstitute: Term): Formula {
+function substitute(formula: Formula, variable: string, termToSubstitute: Term): Formula {
   if (isPredicate(formula)) {
     const newTerms = formula.terms.map((t) => (t.symbol === variable ? termToSubstitute : t));
     return predicate(formula.symbol, newTerms);
@@ -238,7 +238,7 @@ export function substitute(formula: Formula, variable: string, termToSubstitute:
   return formula;
 }
 
-export function formulaEquals(f1: Formula, f2: Formula): boolean {
+function formulaEquals(f1: Formula, f2: Formula): boolean {
   // This is a structural equality check based on the string representation
   // A more robust check would traverse the structure recursively.
   // For tableau purposes, string equality is usually sufficient if string conversion is canonical.
@@ -249,12 +249,12 @@ export function formulaEquals(f1: Formula, f2: Formula): boolean {
 
 type RuleType = 'alpha' | 'beta' | 'gamma' | 'delta';
 
-export interface TableauContext {
+interface TableauContext {
   terms: Term[];
   // branch?: Formula[]; // Not currently used by rule components, but could be for optimization
 }
 
-export interface FormulaRule {
+interface FormulaRule {
   ruleType: RuleType;
   description: string;
   matches(f: Formula): boolean;
@@ -330,7 +330,7 @@ const formulaRules: FormulaRule[] = [
     matches: isNegatedBiconditional,
     getComponents: (f: NegatedBiconditional) => [
       and(f.formula.left, not(f.formula.right)),
-      and(not(f.formula.left), f.formula.right), // Fixed syntax error: added closing parenthesis
+      and(not(f.formula.left), f.formula.right),
     ],
   },
   {
@@ -362,12 +362,12 @@ const formulaRules: FormulaRule[] = [
 
 // ================ Utilities ===================
 
-export const isAtomic = (f: Formula): boolean =>
+const isAtomic = (f: Formula): boolean =>
   isProposition(f) ||
   isPredicate(f) ||
   (isNegation(f) && (isProposition(f.formula) || isPredicate(f.formula)));
 
-export function isClosed(branch: Formula[]): boolean {
+function isClosed(branch: Formula[]): boolean {
   const seenFormulas = new Set<string>();
   // Collect atomic formulas and their negations
   const atomicAndNegations = branch.filter(isAtomic);
@@ -396,10 +396,10 @@ function findRule(f: Formula): FormulaRule | undefined {
   return formulaRules.find((r) => r.matches(f));
 }
 
-export const isAlpha = (f: Formula): boolean => findRule(f)?.ruleType === 'alpha';
-export const isBeta = (f: Formula): boolean => findRule(f)?.ruleType === 'beta';
-export const isGamma = (f: Formula): boolean => findRule(f)?.ruleType === 'gamma';
-export const isDelta = (f: Formula): boolean => findRule(f)?.ruleType === 'delta';
+const isAlpha = (f: Formula): boolean => findRule(f)?.ruleType === 'alpha';
+const isBeta = (f: Formula): boolean => findRule(f)?.ruleType === 'beta';
+const isGamma = (f: Formula): boolean => findRule(f)?.ruleType === 'gamma';
+const isDelta = (f: Formula): boolean => findRule(f)?.ruleType === 'delta';
 
 // Helper to get components with proper type assertion for Alpha rules
 function getAlphaComponentsInternal(f: Formula): Formula[] {
@@ -458,24 +458,24 @@ function getDeltaComponentsInternal(f: Formula, terms: Term[]): Formula[] {
 }
 
 // These public functions can be used, but the internal ones are used by buildTableau for type safety
-export function getAlphaComponents(f: Formula): Formula[] {
+function getAlphaComponents(f: Formula): Formula[] {
   return getAlphaComponentsInternal(f);
 }
 
-export function getBetaComponents(f: Formula): [Formula, Formula] {
+function getBetaComponents(f: Formula): [Formula, Formula] {
   return getBetaComponentsInternal(f);
 }
 
-export function getGammaComponents(f: Formula, terms: Term[]): Formula[] {
+function getGammaComponents(f: Formula, terms: Term[]): Formula[] {
   return getGammaComponentsInternal(f, terms);
 }
 
-export function getDeltaComponents(f: Formula, terms: Term[]): Formula[] {
+function getDeltaComponents(f: Formula, terms: Term[]): Formula[] {
   return getDeltaComponentsInternal(f, terms);
 }
 
 // Generic getComponents - less specific type
-export function getComponents(
+function getComponents(
   f: Formula,
   context?: TableauContext
 ): Formula[] | [Formula, Formula] | undefined {
@@ -492,7 +492,7 @@ interface BranchState {
   betaProcessedSet: Set<string>;
 }
 
-export function buildTableau(premises: Formula[], maxIterations: number = 1000): Formula[][] {
+function buildTableau(premises: Formula[], maxIterations: number = 1000): Formula[][] {
   let branches: BranchState[] = [
     {
       formulas: [...premises],
@@ -683,7 +683,7 @@ export function buildTableau(premises: Formula[], maxIterations: number = 1000):
 
 // ================ Satisfiability & Validity ===================
 
-export function checkSatisfiability(formulas: Formula[]): {
+function checkSatisfiability(formulas: Formula[]): {
   satisfiable: boolean;
   model?: Record<string, boolean>;
   openBranch?: Formula[];
@@ -709,7 +709,7 @@ export function checkSatisfiability(formulas: Formula[]): {
   return { satisfiable: false };
 }
 
-export function checkValidity(premises: Formula[], conclusion: Formula): boolean {
+function checkValidity(premises: Formula[], conclusion: Formula): boolean {
   // An argument premises ⊢ conclusion is valid if and only if premises ∧ ¬conclusion is unsatisfiable.
   // This is equivalent to checking if the tableau for premises ∪ {¬conclusion} closes.
   const formulasToRefute = [...premises, not(conclusion)];
@@ -719,7 +719,7 @@ export function checkValidity(premises: Formula[], conclusion: Formula): boolean
 
 // ================ Utilities & Testing ===================
 
-export function formulaToString(f: Formula | Term): string {
+function formulaToString(f: Formula | Term): string {
   if (isTerm(f)) {
     return f.symbol;
   }
@@ -763,7 +763,7 @@ export function formulaToString(f: Formula | Term): string {
   }
 }
 
-export function printTableau(tableau: Formula[][]): void {
+function printTableau(tableau: Formula[][]): void {
   tableau.forEach((branch, i) => {
     console.log(`Branch ${i + 1}:`);
     branch.forEach((f) => console.log(`  - ${formulaToString(f)}`));
@@ -775,7 +775,7 @@ export function printTableau(tableau: Formula[][]): void {
   });
 }
 
-export function testArgument(
+function testArgument(
   name: string,
   premises: Formula[],
   conclusion: Formula,
@@ -803,7 +803,7 @@ export function testArgument(
   }
 }
 
-export function main(): void {
+function main(): void {
   const p = prop('p');
   const q = prop('q');
   const r = prop('r');
