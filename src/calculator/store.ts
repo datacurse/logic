@@ -1,28 +1,29 @@
 import { proxy } from 'valtio';
-import { Formula } from './formula-types';
-import { Parser } from './parser';
+import { parse, tokenize } from './parser';
+import { ASTNode } from './parsed';
 
 type Store = {
-  inputField: string;
-  parsedInput: [Formula[], Formula] | null;
+  expression: string;
+  astNode: ASTNode | undefined
 }
 
 export const store = proxy<Store>({
-  inputField: '',
-  parsedInput: null
+  expression: '',
+  astNode: undefined
 });
 
-export function updateInput(value: string) {
-  store.inputField = value;
+export function updateExpression(value: string) {
+  store.expression = value;
   console.log('Input updated:', value);
 }
 
 export function startProof() {
-  const parser = new Parser();
   try {
-    console.log('Starting proof for input:', store.inputField);
-    store.parsedInput = parser.parseInput(store.inputField);
-    console.log('Parsing successful!', store.parsedInput);
+    console.log('Starting proof for input:', store.expression);
+    const tokens = tokenize(store.expression)
+    const astNode = parse(tokens)
+    store.astNode = astNode
+    console.log('Parsing successful!', astNode)
   } catch (e) {
     console.error('Parsing error:', e);
     alert(e instanceof Error ? e.message : String(e));

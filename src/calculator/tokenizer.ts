@@ -1,3 +1,23 @@
+// Token definitions
+export type TokenType =
+  | 'SYMBOL'
+  | 'NOT'
+  | 'AND'
+  | 'OR'
+  | 'IMPLIES'
+  | 'IFF'
+  | 'FORALL'
+  | 'EXISTS'
+  | 'LPAREN'
+  | 'RPAREN'
+  | 'TURNSTILE'
+  | 'COMMA';
+
+export interface Token {
+  type: TokenType;
+  value: string;
+}
+
 export class Tokenizer {
   private specs: [RegExp, TokenType | null][] = [
     [/^\|=/, 'TURNSTILE'],

@@ -1,97 +1,187 @@
-import { Formula, AtomicFormula, BinaryFormula, NegatedFormula, QuantifiedFormula } from './formula-types';
-import { Token, Tokenizer, TokenType } from './tokenizer';
+import { ASTNode } from "./parsed";
 
-export class Parser {
-  private tokens: Token[] = [];
-  private pos: number = 0;
+// Tokenizer: Tokenizes the expression string into a list of tokens
+export function tokenize(expression: string): string[] {
+  // Add \|= before individual | and =
+  // Change [A-Za-z]+ to capture individual characters for predicates like Fxy
+  const regex = /\(|\)|∀|∃|□|→|↔|∧|∨|¬|\|=|[A-Za-z]|\d+|[=(),;|]/g;
+  return expression.match(regex) || [];
+}
 
-  parseInput(input: string): [Formula[], Formula] {
-    this.tokens = new Tokenizer().tokenize(input);
-    this.pos = 0;
-
-    const premises: Formula[] = [];
-    if (this.peek().type === 'TURNSTILE') {
-      this.consume('TURNSTILE');
-    } else {
-      while (this.peek().type !== 'TURNSTILE' && this.peek().type !== 'EOF') {
-        premises.push(this.parseExpression());
-        if (this.peek().type === 'COMMA') this.consume('COMMA');
+// Recursive Descent Parser: Parses the token list into an AST
+export function parse(tokens: string[]): ASTNode {
+  let position = 0;
+  
+  function peek() {
+    return position < tokens.length ? tokens[position] : null;
+  }
+  
+  function consume() {
+    return position < tokens.length ? tokens[position++] : null;
+  }
+  
+  // Parse the entire logical expression, including possible entailment
+  function parseLogic(): ASTNode {
+    // First parse the left side (possibly a comma-separated list)
+    const leftSide = parseSequent();
+    
+    // Check if we have an entailment operator
+    if (position < tokens.length && tokens[position] === "|=") {
+      consume(); // Skip |=
+      // Parse the right side
+      const rightSide = parseExpression();
+      return {
+        type: "operator",
+        symbol: "|=",
+        children: [leftSide, rightSide]
+      };
+    }
+    
+    return leftSide;
+  }
+  
+  // Parse comma-separated expressions
+  function parseSequent(): ASTNode {
+    const expressions: ASTNode[] = [];
+    expressions.push(parseExpression());
+    
+    // Keep collecting expressions separated by commas
+    while (position < tokens.length && tokens[position] === ",") {
+      consume(); // Skip comma
+      expressions.push(parseExpression());
+    }
+    
+    // If there's only one expression, return it directly
+    if (expressions.length === 1) {
+      return expressions[0];
+    }
+    
+    // Otherwise, create a listing node
+    return {
+      type: "operator",
+      symbol: "listing",
+      children: expressions
+    };
+  }
+  
+  function parseExpression(): ASTNode {
+    let node = parseTerm();
+    
+    while (position < tokens.length && 
+           (tokens[position] === "∨" || tokens[position] === "∧")) {
+      const operator = consume();
+      const rightNode = parseTerm();
+      node = {
+        type: "operator",
+        symbol: operator,
+        children: [node, rightNode]
+      };
+    }
+    
+    return node;
+  }
+  
+  function parseTerm(): ASTNode {
+    let node = parseFactor();
+    
+    while (position < tokens.length && 
+           (tokens[position] === "→" || tokens[position] === "↔")) {
+      const operator = consume();
+      const rightNode = parseFactor();
+      node = {
+        type: "operator",
+        symbol: operator,
+        children: [node, rightNode]
+      };
+    }
+    
+    return node;
+  }
+  
+  function parseFactor(): ASTNode {
+    if (position >= tokens.length) {
+      throw new Error("Unexpected end of input");
+    }
+    
+    const token = consume();
+    
+    if (token === "(") {
+      const node = parseLogic(); // Start from the top level inside parentheses
+      if (consume() !== ")") {
+        throw new Error("Expected closing parenthesis");
       }
-      this.consume('TURNSTILE');
+      return node;
     }
-
-    const conclusion = this.parseExpression();
-    return [premises, conclusion];
-  }
-
-  parse(input: string): Formula {
-    this.tokens = new Tokenizer().tokenize(input);
-    this.pos = 0;
-    return this.parseExpression();
-  }
-
-  private parseExpression(): Formula {
-    // chain binary parsers in order of precedence
-    return this.parseBinary(['IFF'], () =>
-      this.parseBinary(['IMPLIES'], () =>
-        this.parseBinary(['OR'], () =>
-          this.parseBinary(['AND'], () => this.parseUnary())
-        )
-      )
-    );
-  }
-
-  private parseBinary(
-    ops: TokenType[],
-    next: () => Formula
-  ): Formula {
-    let left = next();
-    while (ops.includes(this.peek().type)) {
-      const op = this.consume().value;
-      const right = next();
-      left = new BinaryFormula(op, left, right);
+    
+    if (token === "¬") {
+      const rightNode = parseFactor();
+      return {
+        type: "operator",
+        symbol: "¬",
+        children: [rightNode]
+      };
     }
-    return left;
-  }
-
-  private parseUnary(): Formula {
-    const token = this.peek();
-    if (token.type === 'NOT') {
-      this.consume('NOT');
-      return new NegatedFormula(this.parseUnary());
+    
+    if (token === "∀" || token === "∃") {
+      // Get the variable for the quantifier
+      const variable = consume();
+      if (!/[A-Za-z]/.test(variable)) {
+        throw new Error("Expected variable after quantifier");
+      }
+      
+      // Parse the body of the quantifier (which might contain other quantifiers)
+      const bodyNode = parseFactor();
+      
+      return {
+        type: "operator",
+        symbol: token,
+        children: [
+          { type: "variable", symbol: variable },
+          bodyNode
+        ]
+      };
     }
-    if (token.type === 'FORALL' || token.type === 'EXISTS') {
-      const q = this.consume().value;
-      const v = this.consume('SYMBOL').value;
-      return new QuantifiedFormula(q, v, this.parseUnary());
+    
+    if (token === "□") {
+      const innerNode = parseFactor();
+      return {
+        type: "operator",
+        symbol: "□",
+        children: [innerNode]
+      };
     }
-    return this.parsePrimary();
-  }
-
-  private parsePrimary(): Formula {
-    const token = this.peek();
-    if (token.type === 'SYMBOL') {
-      return new AtomicFormula(this.consume('SYMBOL').value);
+    
+    // Handle predicates (e.g., Fxy)
+    if (/[A-Za-z]/.test(token)) {
+      // Check if next tokens are variables
+      const predicate = token;
+      const args = [];
+      
+      // Collect variables until we hit a non-variable
+      while (position < tokens.length && /[A-Za-z]/.test(tokens[position])) {
+        args.push({ type: "variable", symbol: consume() });
+      }
+      
+      // If no args, it's just an atomic proposition
+      if (args.length === 0) {
+        return { type: "atomic", symbol: predicate };
+      }
+      
+      // Otherwise, it's a predicate with arguments
+      return {
+        type: "predicate",
+        symbol: predicate,
+        children: args
+      };
     }
-    if (token.type === 'LPAREN') {
-      this.consume('LPAREN');
-      const expr = this.parseExpression();
-      this.consume('RPAREN');
-      return expr;
+    
+    if (/\d+/.test(token)) {
+      return { type: "atomic", symbol: token };
     }
-    throw new Error(`Unexpected token: ${token.value}`);
+    
+    throw new Error("Unexpected token: " + token);
   }
-
-  private peek(): Token {
-    return this.tokens[this.pos] || { type: 'EOF', value: '' };
-  }
-
-  private consume(expected?: TokenType): Token {
-    const token = this.peek();
-    if (expected && token.type !== expected) {
-      throw new Error(`Expected ${expected}, got ${token.type}`);
-    }
-    this.pos++;
-    return token;
-  }
+  
+  // Start parsing from the top level
+  return parseLogic();
 }
