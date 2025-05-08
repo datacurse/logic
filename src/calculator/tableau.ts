@@ -1,94 +1,165 @@
 // ================ Formula Types ================
 
-type Formula =
-  | { type: 'proposition'; symbol: string }
-  | { type: 'negation'; formula: Formula }
-  | { type: 'conjunction'; left: Formula; right: Formula }
-  | { type: 'disjunction'; left: Formula; right: Formula }
-  | { type: 'implication'; left: Formula; right: Formula };
+export interface Proposition {
+  type: 'proposition';
+  symbol: string;
+}
+
+export interface Negation {
+  type: 'negation';
+  formula: Formula;
+}
+
+export interface Conjunction {
+  type: 'conjunction';
+  left: Formula;
+  right: Formula;
+}
+
+export interface Disjunction {
+  type: 'disjunction';
+  left: Formula;
+  right: Formula;
+}
+
+export interface Implication {
+  type: 'implication';
+  left: Formula;
+  right: Formula;
+}
+
+type NegationOf<T extends Formula> = Negation & { formula: T };
+
+export type Formula = Proposition | Negation | Conjunction | Disjunction | Implication;
 
 // ================ Formula Creation Helpers ================
 
-const prop = (symbol: string): Formula => ({ type: 'proposition', symbol });
-const not = (formula: Formula): Formula => ({ type: 'negation', formula });
-const and = (left: Formula, right: Formula): Formula => ({ type: 'conjunction', left, right });
-const or = (left: Formula, right: Formula): Formula => ({ type: 'disjunction', left, right });
-const implies = (left: Formula, right: Formula): Formula => ({ type: 'implication', left, right });
+export const prop = (symbol: string): Formula => ({ type: 'proposition', symbol });
+export const not = (formula: Formula): Formula => ({ type: 'negation', formula });
+export const and = (left: Formula, right: Formula): Formula => ({
+  type: 'conjunction',
+  left,
+  right,
+});
+export const or = (left: Formula, right: Formula): Formula => ({
+  type: 'disjunction',
+  left,
+  right,
+});
+export const implies = (left: Formula, right: Formula): Formula => ({
+  type: 'implication',
+  left,
+  right,
+});
 
 // ================ Tableau Logic ================
 
-const isAtomic = (formula: Formula): boolean =>
+type RuleType = 'alpha' | 'beta' | 'gamma' | 'delta' | 'other';
+
+// Generic rule descriptor
+export type FormulaRule<T extends Formula = Formula> = {
+  ruleType: RuleType;
+  description: string;
+  matches: (f: Formula) => f is T;
+  getComponents: (f: T) => Formula[];
+};
+
+// Collection of all rules
+const formulaRules: FormulaRule<any>[] = [
+  {
+    ruleType: 'alpha',
+    description: 'Conjunction: p∧q',
+    matches: (f): f is Conjunction => f.type === 'conjunction',
+    getComponents: (f) => [f.left, f.right],
+  },
+  {
+    ruleType: 'alpha',
+    description: 'Negated disjunction: ¬(p∨q) ↔ ¬p∧¬q',
+    matches: (f): f is NegationOf<Disjunction> =>
+      f.type === 'negation' && f.formula.type === 'disjunction',
+    getComponents: (f) => [not(f.formula.left), not(f.formula.right)],
+  },
+  {
+    ruleType: 'alpha',
+    description: 'Negated implication: ¬(p→q) ↔ p∧¬q',
+    matches: (f): f is NegationOf<Implication> =>
+      f.type === 'negation' && f.formula.type === 'implication',
+    getComponents: (f) => [f.formula.left, not(f.formula.right)],
+  },
+  {
+    ruleType: 'alpha',
+    description: 'Double negation: ¬¬p ↔ p',
+    matches: (f): f is NegationOf<Negation> =>
+      f.type === 'negation' && f.formula.type === 'negation',
+    getComponents: (f) => [f.formula.formula],
+  },
+  {
+    ruleType: 'beta',
+    description: 'Disjunction: p∨q',
+    matches: (f): f is Disjunction => f.type === 'disjunction',
+    getComponents: (f) => [f.left, f.right],
+  },
+  {
+    ruleType: 'beta',
+    description: 'Implication: p→q ↔ ¬p∨q',
+    matches: (f): f is Implication => f.type === 'implication',
+    getComponents: (f) => [not(f.left), f.right],
+  },
+  {
+    ruleType: 'beta',
+    description: 'Negated conjunction: ¬(p∧q) ↔ ¬p∨¬q',
+    matches: (f): f is NegationOf<Conjunction> =>
+      f.type === 'negation' && f.formula.type === 'conjunction',
+    getComponents: (f) => [not(f.formula.left), not(f.formula.right)],
+  },
+];
+
+// Atomic if it's a proposition or ¬(proposition)
+export const isAtomic = (formula: Formula): boolean =>
   formula.type === 'proposition' ||
   (formula.type === 'negation' && formula.formula.type === 'proposition');
 
-const isClosed = (branch: Formula[]): boolean =>
+// Branch closed if it contains p and ¬p
+export const isClosed = (branch: Formula[]): boolean =>
   branch.some(
     (f1) =>
-      f1.type === 'proposition' && // First, find a proposition p
+      f1.type === 'proposition' &&
       branch.some(
         (f2) =>
-          f2.type === 'negation' && // Then, find a negation
-          f2.formula.type === 'proposition' && // Make sure it's negating a proposition
-          f2.formula.symbol === f1.symbol // Check if it's negating the SAME proposition
+          f2.type === 'negation' &&
+          f2.formula.type === 'proposition' &&
+          f2.formula.symbol === f1.symbol
       )
   );
 
-const isAlpha = (formula: Formula): boolean =>
-  // p∧q
-  // ¬(p∨q) ↔ ¬p∧¬q
-  // ¬(p→q) ↔ p∧¬q
-  // ¬¬p ↔ p
-  formula.type === 'conjunction' ||
-  (formula.type === 'negation' &&
-    ['disjunction', 'implication', 'negation'].includes(formula.formula.type));
+// Check rule type
+export const isRuleType = (formula: Formula, type: RuleType): boolean =>
+  formulaRules.some((rule) => rule.ruleType === type && rule.matches(formula));
 
-const isBeta = (formula: Formula): boolean =>
-  // p∨q
-  // p→q ↔ ¬p∨q
-  // ¬(p∧q) ↔ ¬p∨¬q
-  ['disjunction', 'implication'].includes(formula.type) ||
-  (formula.type === 'negation' && formula.formula.type === 'conjunction');
+// Retrieve components via matching rule
+export function getComponents(formula: Formula): Formula[] {
+  const rule = formulaRules.find((r) => r.matches(formula));
+  return rule ? rule.getComponents(formula as any) : [];
+}
 
-const getAlphaComponents = (formula: Formula): Formula[] => {
-  switch (formula.type) {
-    case 'conjunction':
-      return [formula.left, formula.right];
-    case 'negation': {
-      const inner = formula.formula;
-      if (inner.type === 'disjunction') {
-        return [not(inner.left), not(inner.right)];
-      } else if (inner.type === 'implication') {
-        return [inner.left, not(inner.right)];
-      } else if (inner.type === 'negation') {
-        return [inner.formula];
-      }
-      return [];
-    }
-    default:
-      return [];
-  }
-};
+// Alpha/Beta checks & specialized getters
+export const isAlpha = (f: Formula): boolean => isRuleType(f, 'alpha');
+export const isBeta = (f: Formula): boolean => isRuleType(f, 'beta');
 
-const getBetaComponents = (formula: Formula): [Formula, Formula] => {
-  switch (formula.type) {
-    case 'disjunction':
-      return [formula.left, formula.right];
-    case 'implication':
-      return [not(formula.left), formula.right];
-    case 'negation': {
-      if (formula.formula.type === 'conjunction') {
-        return [formula.formula.left, formula.formula.right].map(not) as [Formula, Formula];
-      }
-      throw new Error('Invalid beta formula');
-    }
-    default:
-      throw new Error('Invalid beta formula');
-  }
-};
+export function getAlphaComponents(formula: Formula): Formula[] {
+  const rule = formulaRules.find((r) => r.ruleType === 'alpha' && r.matches(formula));
+  return rule ? rule.getComponents(formula as any) : [];
+}
+
+export function getBetaComponents(formula: Formula): [Formula, Formula] {
+  const rule = formulaRules.find((r) => r.ruleType === 'beta' && r.matches(formula));
+  if (!rule) throw new Error(`Not a beta formula: ${formulaToString(formula)}`);
+  return rule.getComponents(formula as any) as [Formula, Formula];
+}
 
 // ================ Tableau Building ================
 
-const buildTableau = (formulas: Formula[]): Formula[][] => {
+export function buildTableau(formulas: Formula[]): Formula[][] {
   let tableau: Formula[][] = [formulas];
   let expanded = true;
 
@@ -97,28 +168,21 @@ const buildTableau = (formulas: Formula[]): Formula[][] => {
     tableau = tableau.flatMap((branch) => {
       if (isClosed(branch)) return [branch];
 
-      let foundExpandable = false;
-      for (let i = 0; i < branch.length && !foundExpandable; i++) {
-        const formula = branch[i];
-        // Ensure formula is defined (TypeScript safety)
-        if (!formula) continue;
+      for (let i = 0; i < branch.length; i++) {
+        const f = branch[i];
+        if (f === undefined) continue;
+        if (isAtomic(f)) continue;
+        const rule = formulaRules.find((r) => r.matches(f));
+        if (!rule) continue;
 
-        if (isAtomic(formula)) continue;
+        expanded = true;
+        const rest = branch.filter((_, idx) => idx !== i);
+        const comps = rule.getComponents(f as any);
 
-        if (isAlpha(formula)) {
-          // Handle alpha formulas
-          expanded = true;
-          foundExpandable = true;
-          const rest = branch.filter((_, idx) => idx !== i);
-          const components = getAlphaComponents(formula);
-          return [rest.concat(components)];
-        } else if (isBeta(formula)) {
-          // Handle beta formulas
-          expanded = true;
-          foundExpandable = true;
-          const rest = branch.filter((_, idx) => idx !== i);
-          const [left, right] = getBetaComponents(formula);
-          return [rest.concat(left), rest.concat(right)];
+        if (rule.ruleType === 'alpha') {
+          return [rest.concat(comps)];
+        } else if (rule.ruleType === 'beta') {
+          return comps.map((c) => rest.concat([c]));
         }
       }
       return [branch];
@@ -126,13 +190,14 @@ const buildTableau = (formulas: Formula[]): Formula[][] => {
   }
 
   return tableau;
-};
+}
 
-// ================ Satisfiability and Validity Check ================
+// ================ Satisfiability & Validity ================
 
-const checkSatisfiability = (
-  formulas: Formula[]
-): { satisfiable: boolean; model?: Record<string, boolean> } => {
+export function checkSatisfiability(formulas: Formula[]): {
+  satisfiable: boolean;
+  model?: Record<string, boolean>;
+} {
   const tableau = buildTableau(formulas);
   for (const branch of tableau) {
     if (!isClosed(branch)) {
@@ -146,16 +211,16 @@ const checkSatisfiability = (
     }
   }
   return { satisfiable: false };
-};
+}
 
-const checkValidity = (premises: Formula[], conclusion: Formula): boolean => {
+export function checkValidity(premises: Formula[], conclusion: Formula): boolean {
   const { satisfiable } = checkSatisfiability([...premises, not(conclusion)]);
   return !satisfiable;
-};
+}
 
-// ================ Utility Functions ================
+// ================ Utilities & Testing ================
 
-const formulaToString = (formula: Formula): string => {
+export function formulaToString(formula: Formula): string {
   switch (formula.type) {
     case 'proposition':
       return formula.symbol;
@@ -168,57 +233,33 @@ const formulaToString = (formula: Formula): string => {
     case 'implication':
       return `(${formulaToString(formula.left)} → ${formulaToString(formula.right)})`;
   }
-};
+}
 
-const printTableau = (tableau: Formula[][]): void => {
+export function printTableau(tableau: Formula[][]): void {
   tableau.forEach((branch, i) => {
     console.log(`Branch ${i + 1}:`);
     branch.forEach((f) => console.log(`- ${formulaToString(f)}`));
-    console.log(`Closed: ${isClosed(branch)}\n`);
+    console.log(`Closed: ${isClosed(branch)}`);
   });
-};
+}
 
-const testArgument = (name: string, premises: Formula[], conclusion: Formula): void => {
+export function testArgument(name: string, premises: Formula[], conclusion: Formula): void {
   console.log(`Testing validity of ${name}`);
   premises.forEach((f) => console.log(`- ${formulaToString(f)}`));
   console.log(`Conclusion: ${formulaToString(conclusion)}`);
-  const isValid = checkValidity(premises, conclusion);
-  console.log(`The argument is ${isValid ? 'valid' : 'invalid'}.`);
-};
+  console.log(`The argument is ${checkValidity(premises, conclusion) ? 'valid' : 'invalid'}.`);
+}
 
-// ================ Example Usage ================
-
-const testDisjunctiveSyllogism = () => {
-  const p = prop('p');
-  const q = prop('q');
-  testArgument('p∨q, ¬p |= q', [or(p, q), not(p)], q);
-};
-
-const testModusPonens = () => {
-  const p = prop('p');
-  const q = prop('q');
-  testArgument('p→q, p |= q', [implies(p, q), p], q);
-};
-
-const testModusTollens = () => {
-  const p = prop('p');
-  const q = prop('q');
-  testArgument('p→q, ¬q |= ¬p', [implies(p, q), not(q)], not(p));
-};
-
-const testHypotheticalSyllogism = () => {
+// Example usage
+export function main(): void {
   const p = prop('p');
   const q = prop('q');
   const r = prop('r');
+  testArgument('p∨q, ¬p |= q', [or(p, q), not(p)], q);
+  testArgument('p→q, p |= q', [implies(p, q), p], q);
+  testArgument('p→q, ¬q |= ¬p', [implies(p, q), not(q)], not(p));
   testArgument('p→q, q→r |= p→r', [implies(p, q), implies(q, r)], implies(p, r));
-};
+}
 
-const main = () => {
-  console.log('Tableau Method for Propositional Logic\n=====================================');
-  testDisjunctiveSyllogism();
-  testModusPonens();
-  testModusTollens();
-  testHypotheticalSyllogism();
-};
-
+// Run
 main();
