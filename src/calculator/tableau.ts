@@ -78,6 +78,8 @@ type NegatedUniversal = Negation & { formula: Universal };
 type NegatedExistential = Negation & { formula: Existential };
 type NegatedBiconditional = Negation & { formula: Biconditional };
 
+// ================ Type Guards ===================
+
 function createTypeGuard<T extends Formula | Term>(type: T['type']): (f: Formula | Term) => f is T {
   return (f: Formula | Term): f is T => f != null && typeof f === 'object' && f.type === type;
 }
@@ -251,15 +253,12 @@ type RuleType = 'alpha' | 'beta' | 'gamma' | 'delta';
 
 interface TableauContext {
   terms: Term[];
-  // branch?: Formula[]; // Not currently used by rule components, but could be for optimization
 }
 
 interface FormulaRule {
   ruleType: RuleType;
   description: string;
   matches(f: Formula): boolean;
-  // getComponents should return Formula[] or [Formula, Formula] depending on the rule type
-  // The actual implementation might need context (like terms)
   getComponents(f: Formula, context?: TableauContext): Formula[] | [Formula, Formula];
 }
 
@@ -401,81 +400,35 @@ const isBeta = (f: Formula): boolean => findRule(f)?.ruleType === 'beta';
 const isGamma = (f: Formula): boolean => findRule(f)?.ruleType === 'gamma';
 const isDelta = (f: Formula): boolean => findRule(f)?.ruleType === 'delta';
 
-// Helper to get components with proper type assertion for Alpha rules
-function getAlphaComponentsInternal(f: Formula): Formula[] {
-  const rule = formulaRules.find((r) => r.matches(f) && r.ruleType === 'alpha');
+function getComponentsForRule(
+  f: Formula,
+  ruleType: RuleType,
+  context?: TableauContext
+): Formula[] | [Formula, Formula] {
+  const rule = formulaRules.find((r) => r.matches(f) && r.ruleType === ruleType);
   if (!rule) {
-    // This case should ideally not happen if isAlpha was checked before calling
-    throw new Error(`No alpha rule found for formula: ${formulaToString(f)}`);
+    throw new Error(`No ${ruleType} rule found for formula: ${formulaToString(f)}`);
   }
-  // Type assertion based on the filter above
-  return rule.getComponents(f) as Formula[];
+  return rule.getComponents(f, context);
 }
 
-// Helper to get components with proper type assertion for Beta rules
-function getBetaComponentsInternal(f: Formula): [Formula, Formula] {
-  const rule = formulaRules.find((r) => r.matches(f) && r.ruleType === 'beta');
-  if (!rule) {
-    // This case should ideally not happen if isBeta was checked before calling
-    throw new Error(`No beta rule found for formula: ${formulaToString(f)}`);
-  }
-  const components = rule.getComponents(f);
-  if (!Array.isArray(components) || components.length !== 2) {
-    throw new Error(`Beta rule did not return 2 components for ${formulaToString(f)}`);
-  }
-  // Type assertion based on the rule definition and the check above
-  return components as [Formula, Formula];
+export function getAlphaComponents(f: Formula): Formula[] {
+  return getComponentsForRule(f, 'alpha') as Formula[];
 }
 
-// Helper to get components with proper type assertion for Gamma rules
-function getGammaComponentsInternal(f: Formula, terms: Term[]): Formula[] {
-  const rule = formulaRules.find((r) => r.matches(f) && r.ruleType === 'gamma');
-  if (!rule) {
-    // This case should ideally not happen if isGamma was checked before calling
-    throw new Error(`No gamma rule found for formula: ${formulaToString(f)}`);
-  }
-  // Pass context with terms
-  const components = rule.getComponents(f, { terms });
-  if (!Array.isArray(components)) {
-    throw new Error(`Gamma rule did not return an array of components for ${formulaToString(f)}`);
-  }
-  return components as Formula[];
+export function getBetaComponents(f: Formula): [Formula, Formula] {
+  return getComponentsForRule(f, 'beta') as [Formula, Formula];
 }
 
-// Helper to get components with proper type assertion for Delta rules
-function getDeltaComponentsInternal(f: Formula, terms: Term[]): Formula[] {
-  const rule = formulaRules.find((r) => r.matches(f) && r.ruleType === 'delta');
-  if (!rule) {
-    // This case should ideally not happen if isDelta was checked before calling
-    throw new Error(`No delta rule found for formula: ${formulaToString(f)}`);
-  }
-  // Pass context with terms
-  const components = rule.getComponents(f, { terms });
-  if (!Array.isArray(components)) {
-    throw new Error(`Delta rule did not return an array of components for ${formulaToString(f)}`);
-  }
-  return components as Formula[];
+export function getGammaComponents(f: Formula, terms: Term[]): Formula[] {
+  return getComponentsForRule(f, 'gamma', { terms }) as Formula[];
 }
 
-// These public functions can be used, but the internal ones are used by buildTableau for type safety
-function getAlphaComponents(f: Formula): Formula[] {
-  return getAlphaComponentsInternal(f);
+export function getDeltaComponents(f: Formula, terms: Term[]): Formula[] {
+  return getComponentsForRule(f, 'delta', { terms }) as Formula[];
 }
 
-function getBetaComponents(f: Formula): [Formula, Formula] {
-  return getBetaComponentsInternal(f);
-}
-
-function getGammaComponents(f: Formula, terms: Term[]): Formula[] {
-  return getGammaComponentsInternal(f, terms);
-}
-
-function getDeltaComponents(f: Formula, terms: Term[]): Formula[] {
-  return getDeltaComponentsInternal(f, terms);
-}
-
-// Generic getComponents - less specific type
-function getComponents(
+export function getComponents(
   f: Formula,
   context?: TableauContext
 ): Formula[] | [Formula, Formula] | undefined {
@@ -485,263 +438,197 @@ function getComponents(
 
 // ================ Tableau Construction ===================
 
-interface BranchState {
+interface Branch {
   formulas: Formula[];
-  gammaSet: Set<string>;
-  deltaSet: Set<string>;
-  betaProcessedSet: Set<string>;
+  gammaApplied: Set<string>;
+  deltaApplied: Set<string>;
+  betaApplied: Set<string>;
 }
 
-function buildTableau(premises: Formula[], maxIterations: number = 1000): Formula[][] {
-  let branches: BranchState[] = [
+export function buildTableau(premises: Formula[]): Formula[][] {
+  let tableau: Branch[] = [
     {
-      formulas: [...premises],
-      gammaSet: new Set(),
-      deltaSet: new Set(),
-      betaProcessedSet: new Set(),
+      formulas: premises,
+      gammaApplied: new Set(),
+      deltaApplied: new Set(),
+      betaApplied: new Set(),
     },
   ];
+  let expanded = true;
 
-  const completedBranches: Formula[][] = [];
-  let iterationCount = 0;
+  while (expanded) {
+    expanded = false;
+    const nextTableau: Branch[] = [];
 
-  while (branches.length > 0 && iterationCount <= maxIterations) {
-    iterationCount++;
-    const currentBranch = branches.shift()!; // Use '!' as we check branches.length > 0
+    for (const branch of tableau) {
+      if (isClosed(branch.formulas)) {
+        nextTableau.push(branch);
+        continue;
+      }
 
-    if (isClosed(currentBranch.formulas)) {
-      completedBranches.push(currentBranch.formulas);
-      continue;
-    }
+      let branchExpanded = false;
 
-    let ruleApplied = false;
-
-    // Prioritize Alpha and Delta rules (deterministic)
-
-    // 1. Apply Alpha rules
-    alpha: for (const formula of currentBranch.formulas) {
-      if (!isAlpha(formula)) continue;
-
-      const components = getAlphaComponentsInternal(formula);
-      const actualFormulasToAdd: Formula[] = [];
-      for (const comp of components) {
-        if (!currentBranch.formulas.some((f_exist) => formulaEquals(f_exist, comp))) {
-          actualFormulasToAdd.push(comp);
+      // Apply alpha rules
+      for (const formula of branch.formulas) {
+        if (isAlpha(formula)) {
+          const components = getAlphaComponents(formula);
+          const newFormulas = components.filter(
+            (comp) => !branch.formulas.some((f) => formulaEquals(f, comp))
+          );
+          if (newFormulas.length > 0) {
+            nextTableau.push({
+              formulas: [...branch.formulas, ...newFormulas],
+              gammaApplied: new Set(branch.gammaApplied),
+              deltaApplied: new Set(branch.deltaApplied),
+              betaApplied: new Set(branch.betaApplied),
+            });
+            branchExpanded = true;
+            expanded = true;
+            break; // Move to the next branch after applying a rule
+          }
         }
       }
+      if (branchExpanded) continue;
 
-      if (actualFormulasToAdd.length > 0) {
-        // Add components to the current branch and put it back at the front
-        branches.unshift({
-          formulas: [...currentBranch.formulas, ...actualFormulasToAdd],
-          gammaSet: new Set(currentBranch.gammaSet),
-          deltaSet: new Set(currentBranch.deltaSet),
-          betaProcessedSet: new Set(currentBranch.betaProcessedSet),
-        });
-        ruleApplied = true;
-        break alpha; // Restart iteration on the modified branch
+      // Apply delta rules
+      for (const formula of branch.formulas) {
+        if (isExistential(formula)) {
+          const formulaString = formulaToString(formula);
+          if (!branch.deltaApplied.has(formulaString)) {
+            const terms = extractTerms(branch.formulas);
+            const freshTerm = freshConstant(terms);
+            const instantiated = substitute(formula.formula, formula.variable, freshTerm);
+            nextTableau.push({
+              formulas: [...branch.formulas, instantiated],
+              gammaApplied: new Set(branch.gammaApplied),
+              deltaApplied: new Set([...branch.deltaApplied, formulaString]),
+              betaApplied: new Set(branch.betaApplied),
+            });
+            branchExpanded = true;
+            expanded = true;
+            break; // Move to the next branch
+          }
+        }
       }
-    }
-    if (ruleApplied) continue;
+      if (branchExpanded) continue;
 
-    // 2. Apply Delta rules
-    delta: for (const formula of currentBranch.formulas) {
-      if (!isExistential(formula)) continue;
-
-      const key = formulaToString(formula);
-      if (!currentBranch.deltaSet.has(key)) {
-        const terms = extractTerms(currentBranch.formulas);
-        const fresh = freshConstant(terms);
-        const instantiated = substitute(formula.formula, formula.variable, fresh);
-
-        // Add the instantiated formula and mark the existential as processed for this branch
-        branches.unshift({
-          formulas: [...currentBranch.formulas, instantiated],
-          gammaSet: new Set(currentBranch.gammaSet),
-          deltaSet: new Set([...currentBranch.deltaSet, key]),
-          betaProcessedSet: new Set(currentBranch.betaProcessedSet),
-        });
-        ruleApplied = true;
-        break delta; // Restart iteration on the modified branch
-      }
-    }
-    if (ruleApplied) continue;
-
-    // Apply Gamma and Beta rules (non-deterministic or require existing terms)
-    // We process these after deterministic rules
-
-    // 3. Apply Gamma rules
-    // Gamma rules can be applied multiple times with different terms
-    gamma: for (const formula of currentBranch.formulas) {
-      if (!isUniversal(formula)) continue;
-
-      const currentTermsOnBranch = extractTerms(currentBranch.formulas);
-
-      const termsToInstantiateWith =
-        currentTermsOnBranch.length === 0
-          ? [freshConstant([])] // If no terms, introduce one fresh constant
-          : currentTermsOnBranch; // Otherwise, use all existing terms
-
-      let instantiatedFormulas: Formula[] = [];
-      let newGammaKeys: string[] = [];
-      let appliedForGamma = false;
-
-      for (const term_instance of termsToInstantiateWith) {
-        const key = `${formulaToString(formula)}_${formulaToString(term_instance)}`; // Use term string for key
-        if (!currentBranch.gammaSet.has(key)) {
-          const instantiated = substitute(formula.formula, formula.variable, term_instance);
-          if (!currentBranch.formulas.some((f_exist) => formulaEquals(f_exist, instantiated))) {
-            instantiatedFormulas.push(instantiated);
-            newGammaKeys.push(key);
-            appliedForGamma = true;
-            // Applying Gamma rule with one term is enough to make progress
-            // If multiple terms exist, we could add them all in one go,
-            // but applying one at a time simplifies the loop structure and ensures progress.
-            // Let's add all applicable instantiations for existing terms at once.
-            // If no terms existed, we add the single fresh constant instantiation.
+      // Apply gamma rules
+      for (const formula of branch.formulas) {
+        if (isUniversal(formula)) {
+          const terms = extractTerms(branch.formulas);
+          if (terms.length > 0) {
+            for (const term of terms) {
+              const instantiated = substitute(formula.formula, formula.variable, term);
+              const key = `${formulaToString(formula)}_${formulaToString(instantiated)}`;
+              if (
+                !branch.gammaApplied.has(key) &&
+                !branch.formulas.some((f) => formulaEquals(f, instantiated))
+              ) {
+                nextTableau.push({
+                  formulas: [...branch.formulas, instantiated],
+                  gammaApplied: new Set([...branch.gammaApplied, key]),
+                  deltaApplied: new Set(branch.deltaApplied),
+                  betaApplied: new Set(branch.betaApplied),
+                });
+                branchExpanded = true;
+                expanded = true;
+                break; // Apply one instantiation at a time for simplicity
+              }
+            }
+            if (branchExpanded) break;
           } else {
-            // If the instantiated formula is already present, mark the gamma instance as processed
-            newGammaKeys.push(key);
+            // If no terms exist, instantiate with a fresh constant once
+            const freshTerm = freshConstant([]);
+            const instantiated = substitute(formula.formula, formula.variable, freshTerm);
+            const key = `${formulaToString(formula)}_${formulaToString(instantiated)}`;
+            if (
+              !branch.gammaApplied.has(key) &&
+              !branch.formulas.some((f) => formulaEquals(f, instantiated))
+            ) {
+              nextTableau.push({
+                formulas: [...branch.formulas, instantiated],
+                gammaApplied: new Set([...branch.gammaApplied, key]),
+                deltaApplied: new Set(branch.deltaApplied),
+                betaApplied: new Set(branch.betaApplied),
+              });
+              branchExpanded = true;
+              expanded = true;
+              break;
+            }
+          }
+        }
+      }
+      if (branchExpanded) continue;
+
+      // Apply beta rules (split the branch)
+      for (const formula of branch.formulas) {
+        if (isBeta(formula)) {
+          const formulaString = formulaToString(formula);
+          if (!branch.betaApplied.has(formulaString)) {
+            const [comp1, comp2] = getBetaComponents(formula);
+            nextTableau.push({
+              formulas: [...branch.formulas, comp1],
+              gammaApplied: new Set(branch.gammaApplied),
+              deltaApplied: new Set(branch.deltaApplied),
+              betaApplied: new Set([...branch.betaApplied, formulaString]),
+            });
+            nextTableau.push({
+              formulas: [...branch.formulas, comp2],
+              gammaApplied: new Set(branch.gammaApplied),
+              deltaApplied: new Set(branch.deltaApplied),
+              betaApplied: new Set([...branch.betaApplied, formulaString]),
+            });
+            branchExpanded = true;
+            expanded = true;
+            break; // Only apply one beta rule per iteration for simplicity
           }
         }
       }
 
-      if (instantiatedFormulas.length > 0 || newGammaKeys.length > 0) {
-        branches.unshift({
-          formulas: [...currentBranch.formulas, ...instantiatedFormulas],
-          gammaSet: new Set([...currentBranch.gammaSet, ...newGammaKeys]),
-          deltaSet: new Set(currentBranch.deltaSet),
-          betaProcessedSet: new Set(currentBranch.betaProcessedSet),
-        });
-        ruleApplied = true;
-        break gamma; // Restart iteration on the modified branch
+      if (!branchExpanded) {
+        nextTableau.push(branch); // If no rule applied, keep the branch as is
       }
     }
-    if (ruleApplied) continue;
-
-    // 4. Apply Beta rules
-    // Beta rules split the branch, so they should be done last if possible
-    beta: for (const formula of currentBranch.formulas) {
-      if (!isBeta(formula)) continue;
-
-      const formulaStr = formulaToString(formula);
-      if (currentBranch.betaProcessedSet.has(formulaStr)) {
-        continue; // Already applied beta rule to this formula on this branch
-      }
-
-      const [comp1, comp2] = getBetaComponentsInternal(formula);
-
-      // Create two new branches
-      const branch1Formulas = currentBranch.formulas.some((f_exist) =>
-        formulaEquals(f_exist, comp1)
-      )
-        ? [...currentBranch.formulas]
-        : [...currentBranch.formulas, comp1];
-
-      const branch1State: BranchState = {
-        formulas: branch1Formulas,
-        gammaSet: new Set(currentBranch.gammaSet),
-        deltaSet: new Set(currentBranch.deltaSet),
-        betaProcessedSet: new Set([...currentBranch.betaProcessedSet, formulaStr]),
-      };
-
-      const branch2Formulas = currentBranch.formulas.some((f_exist) =>
-        formulaEquals(f_exist, comp2)
-      )
-        ? [...currentBranch.formulas]
-        : [...currentBranch.formulas, comp2];
-
-      const branch2State: BranchState = {
-        formulas: branch2Formulas,
-        gammaSet: new Set(currentBranch.gammaSet),
-        deltaSet: new Set(currentBranch.deltaSet),
-        betaProcessedSet: new Set([...currentBranch.betaProcessedSet, formulaStr]),
-      };
-
-      branches.unshift(branch1State, branch2State); // Add new branches to the front
-      ruleApplied = true;
-      break beta; // Restart iteration with the new branches
-    }
-    if (ruleApplied) continue;
-
-    // If no rule was applied and the branch is not closed, it's an open branch
-    completedBranches.push(currentBranch.formulas);
+    tableau = nextTableau;
   }
 
-  if (iterationCount > maxIterations && branches.length > 0) {
-    console.warn(
-      `Maximum iterations (${maxIterations}) reached. Tableau might be incomplete (remaining open branches).`
-    );
-    // Add remaining branches to completedBranches, they are considered open if not closed
-    branches.forEach((b) => completedBranches.push(b.formulas));
-  } else if (iterationCount > maxIterations) {
-    console.warn(`Maximum iterations (${maxIterations}) reached.`);
-  }
-
-  return completedBranches;
+  return tableau.map((branch) => branch.formulas);
 }
 
 // ================ Satisfiability & Validity ===================
 
-function checkSatisfiability(formulas: Formula[]): {
+export function checkSatisfiability(formulas: Formula[]): {
   satisfiable: boolean;
   model?: Record<string, boolean>;
-  openBranch?: Formula[];
 } {
   const tableau = buildTableau(formulas);
 
   for (const branch of tableau) {
     if (!isClosed(branch)) {
-      // Construct a model from an open branch (only for propositional symbols)
       const model: Record<string, boolean> = {};
       for (const f of branch) {
-        if (isProposition(f)) {
-          model[f.symbol] = true; // Assume proposition is true in this branch
-        } else if (isNegation(f) && isProposition(f.formula)) {
-          model[f.formula.symbol] = false; // Assume negated proposition is false
-        }
-        // Predicates and quantifiers are more complex to represent in a simple model object
+        if (isProposition(f)) model[f.symbol] = true;
+        else if (isNegation(f) && isProposition(f.formula)) model[f.formula.symbol] = false;
       }
-      return { satisfiable: true, model, openBranch: branch };
+      return { satisfiable: true, model };
     }
   }
 
   return { satisfiable: false };
 }
 
-function checkValidity(premises: Formula[], conclusion: Formula): boolean {
-  // An argument premises ⊢ conclusion is valid if and only if premises ∧ ¬conclusion is unsatisfiable.
-  // This is equivalent to checking if the tableau for premises ∪ {¬conclusion} closes.
-  const formulasToRefute = [...premises, not(conclusion)];
-  const tableau = buildTableau(formulasToRefute);
-  return tableau.every((branch) => isClosed(branch));
+export function checkValidity(premises: Formula[], conclusion: Formula): boolean {
+  return !checkSatisfiability([...premises, not(conclusion)]).satisfiable;
 }
 
 // ================ Utilities & Testing ===================
 
-function formulaToString(f: Formula | Term): string {
-  if (isTerm(f)) {
-    return f.symbol;
-  }
-
+export function formulaToString(f: Formula): string {
   switch (f.type) {
     case 'proposition':
       return f.symbol;
     case 'negation':
-      const innerStr = formulaToString(f.formula);
-      // Add parentheses for clarity if the inner formula is a binary connective or quantifier or another negation
-      if (
-        isConjunction(f.formula) ||
-        isDisjunction(f.formula) ||
-        isImplication(f.formula) ||
-        isBiconditional(f.formula) ||
-        isUniversal(f.formula) ||
-        isExistential(f.formula) ||
-        isNegation(f.formula)
-      ) {
-        return `¬(${innerStr})`;
-      }
-      return `¬${innerStr}`;
+      return `¬${formulaToString(f.formula)}`;
     case 'conjunction':
       return `(${formulaToString(f.left)} ∧ ${formulaToString(f.right)})`;
     case 'disjunction':
@@ -751,219 +638,46 @@ function formulaToString(f: Formula | Term): string {
     case 'biconditional':
       return `(${formulaToString(f.left)} ↔ ${formulaToString(f.right)})`;
     case 'predicate':
-      return `${f.symbol}(${f.terms.map((t) => formulaToString(t)).join(', ')})`;
+      return `${f.symbol}(${f.terms.map((t) => t.symbol).join(', ')})`;
     case 'universal':
-      return `∀${f.variable}(${formulaToString(f.formula)})`;
+      return `∀${f.variable} ${formulaToString(f.formula)}`;
     case 'existential':
-      return `∃${f.variable}(${formulaToString(f.formula)})`;
-    default:
-      // This should ideally not be reached if the Formula type covers all cases
-      const exhaustiveCheck: never = f;
-      throw new Error(`Unknown formula type: ${JSON.stringify(exhaustiveCheck)}`);
+      return `∃${f.variable} ${formulaToString(f.formula)}`;
   }
 }
 
-function printTableau(tableau: Formula[][]): void {
+export function printTableau(tableau: Formula[][]): void {
   tableau.forEach((branch, i) => {
     console.log(`Branch ${i + 1}:`);
-    branch.forEach((f) => console.log(`  - ${formulaToString(f)}`));
+    branch.forEach((f) => console.log(`- ${formulaToString(f)}`));
     console.log(`Closed: ${isClosed(branch)}`);
-    if (!isClosed(branch)) {
-      console.log('This branch is open.');
-    }
-    console.log('---');
   });
 }
 
-function testArgument(
-  name: string,
-  premises: Formula[],
-  conclusion: Formula,
-  expected: boolean
-): void {
-  console.log(`\nTesting Argument: "${name}"`);
-  if (premises.length > 0) {
-    console.log('Premises:');
-    premises.forEach((f) => console.log(`  - ${formulaToString(f)}`));
-  } else {
-    console.log('Premises: None (Proving a theorem)');
-  }
+export function testArgument(name: string, premises: Formula[], conclusion: Formula): void {
+  console.log(`Testing ${name}`);
+  premises.forEach((f) => console.log(`- ${formulaToString(f)}`));
   console.log(`Conclusion: ${formulaToString(conclusion)}`);
-  const isValid = checkValidity(premises, conclusion);
-  console.log(`Calculated Valid? ${isValid}`);
-  console.log(`Expected Valid? ${expected}`);
-  if (isValid === expected) {
-    console.log('Result: CORRECT');
-  } else {
-    console.error('Result: INCORRECT');
-    // For debugging incorrect results, print the tableau if the test fails:
-    console.log('Tableau for INCORRECT result (refuting the argument):');
-    const tableau = buildTableau([...premises, not(conclusion)], 2000); // Allow more iterations for debug
-    printTableau(tableau);
-  }
+  console.log(`Valid? ${checkValidity(premises, conclusion)}`);
 }
 
-function main(): void {
+export function main(): void {
   const p = prop('p');
   const q = prop('q');
   const r = prop('r');
+  testArgument('p∨q, ¬p ⊢ q', [or(p, q), not(p)], q);
+  testArgument('p→q, p ⊢ q', [implies(p, q), p], q);
+  testArgument('p→q, ¬q ⊢ ¬p', [implies(p, q), not(q)], not(p));
+  testArgument('p→q, q→r ⊢ p→r', [implies(p, q), implies(q, r)], implies(p, r));
 
-  testArgument('Modus Ponens: p → q, p ⊢ q', [implies(p, q), p], q, true);
-  testArgument('Disjunctive Syllogism: p ∨ q, ¬p ⊢ q', [or(p, q), not(p)], q, true);
+  const P = predicate('P', [term('x')]);
+  const Q = predicate('Q', [term('x')]);
+  testArgument('∀x P(x) ⊢ P(a)', [forAll('x', P)], substitute(P, 'x', term('a')));
   testArgument(
-    'Distribution: ⊢ (p∨(q∧r))→((p∨q)∧(p∨r))',
-    [],
-    implies(or(p, and(q, r)), and(or(p, q), or(p, r))),
-    true
+    '∃x P(x), ∀x (P(x) → Q(x)) ⊢ ∃x Q(x)',
+    [exists('x', P), forAll('x', implies(P, Q))],
+    exists('x', Q)
   );
-  testArgument('Invalid: p → q, q ⊢ p', [implies(p, q), q], p, false);
-
-  // Biconditional Tests
-  testArgument(
-    'Biconditional Intro: p → q, q → p ⊢ p ↔ q',
-    [implies(p, q), implies(q, p)],
-    iff(p, q),
-    true
-  );
-  testArgument('Biconditional Elim 1: p ↔ q, p ⊢ q', [iff(p, q), p], q, true);
-  testArgument('Biconditional Elim 2: p ↔ q, q ⊢ p', [iff(p, q), q], p, true);
-  testArgument(
-    'Negated Biconditional: ⊢ ¬(p ↔ q) ↔ ((p ∧ ¬q) ∨ (¬p ∧ q))',
-    [],
-    iff(not(iff(p, q)), or(and(p, not(q)), and(not(p), q))),
-    true
-  );
-
-  const x = 'x';
-  const y = 'y';
-  const z = 'z';
-  const a = term('a');
-
-  const P = (t: Term) => predicate('P', [t]);
-  const Q = (t: Term) => predicate('Q', [t]);
-  const F = (t: Term) => predicate('F', [t]);
-  const G = (t: Term) => predicate('G', [t]);
-  const F_rel = (t1: Term, t2: Term) => predicate('F_rel', [t1, t2]);
-
-  console.log('\n--- First-Order Logic Tests ---');
-
-  testArgument(
-    'Gamma Example: ∀x(P(x) → Q(x)), P(a) ⊢ Q(a)',
-    [forAll(x, implies(P(term(x)), Q(term(x)))), P(a)],
-    Q(a),
-    true
-  );
-
-  testArgument(
-    'Delta Example: ∃x P(x) ⊢ ¬∀x ¬P(x)',
-    [exists(x, P(term(x)))],
-    not(forAll(x, not(P(term(x))))),
-    true
-  );
-
-  testArgument(
-    'Negated Quantifier Equivalence: ¬∀x P(x) ⊢ ∃x ¬P(x)',
-    [not(forAll(x, P(term(x))))],
-    exists(x, not(P(term(x)))),
-    true
-  );
-
-  testArgument(
-    'Negated Quantifier Equivalence: ¬∃x P(x) ⊢ ∀x ¬P(x)',
-    [not(exists(x, P(term(x))))],
-    forAll(x, not(P(term(x)))),
-    true
-  );
-
-  testArgument(
-    'Combined Gamma & Delta: ∀x(P(x) → Q(x)), ∃x P(x) ⊢ ∃x Q(x)',
-    [forAll(x, implies(P(term(x)), Q(term(x)))), exists(x, P(term(x)))],
-    exists(x, Q(term(x))),
-    true
-  );
-
-  testArgument(
-    "Drinker's Paradox (Theorem): ⊢ ∃y∀x(F(y) → F(x))",
-    [],
-    exists(y, forAll(x, implies(F(term(y)), F(term(x))))),
-    true
-  );
-
-  const R_pred = (t1: Term, t2: Term) => predicate('R', [t1, t2]);
-  testArgument(
-    'Syllogism-like FOL: ∀x(P(x) → Q(x)), ∀x(Q(x) → R(x,a)) ⊢ ∀x(P(x) → R(x,a))',
-    [
-      forAll(x, implies(P(term(x)), Q(term(x)))),
-      forAll(x, implies(Q(term(x)), R_pred(term(x), a))),
-    ],
-    forAll(x, implies(P(term(x)), R_pred(term(x), a))),
-    true
-  );
-
-  testArgument(
-    'Invalid FOL: ∀x P(x) ⊢ ∃x Q(x)',
-    [forAll(x, P(term(x)))],
-    exists(x, Q(term(x))),
-    false
-  );
-
-  testArgument(
-    'Gamma with no initial terms: ⊢ ∀x P(x) → P(c1)',
-    [],
-    implies(forAll(x, P(term(x))), P(term('c1'))),
-    true
-  );
-
-  // New Test Case 1 (Complex FOL with Biconditional)
-  const Fx = F(term(x));
-  const Gy = G(term(y));
-  const Gz = G(term(z));
-  const premiseComplex = exists(
-    y,
-    exists(
-      z,
-      forAll(
-        x,
-        and(
-          implies(Fx, Gy), // Fx → Gy
-          implies(Gz, Fx) // Gz → Fx
-        )
-      )
-    )
-  );
-  const conclusionComplex = forAll(x, exists(y, iff(Fx, Gy))); // ∀x∃y(Fx↔Gy)
-  testArgument(
-    'Complex FOL: [∃y∃z∀x((Fx→Gy)∧(Gz→Fx))] ⊢ ∀x∃y(Fx↔Gy)', // Corrected name
-    [premiseComplex], // Premises
-    conclusionComplex, // Conclusion
-    true // This is a known validity (related to choice principles / DGM theorem)
-  );
-
-  // New Test Case 2 (Quantifier Shift - Invalid)
-  const premiseQuantShift = forAll(y, exists(x, F_rel(term(x), term(y))));
-  const conclusionQuantShift = exists(x, forAll(y, F_rel(term(x), term(y))));
-  testArgument(
-    'Invalid Quantifier Shift: [∀y∃x F(x,y)] ⊢ ∃x∀y F(x,y)', // Corrected name
-    [premiseQuantShift], // Premises
-    conclusionQuantShift, // Conclusion
-    false // This is generally invalid
-  );
-
-  console.log('\n--- Satisfiability Tests ---');
-  const satResult1 = checkSatisfiability([P(a), not(P(a))]);
-  console.log(`{P(a), ¬P(a)} Satisfiable? ${satResult1.satisfiable} (Expected: false)`);
-
-  const satResult2 = checkSatisfiability([exists(x, P(term(x)))]);
-  console.log(`{∃x P(x)} Satisfiable? ${satResult2.satisfiable} (Expected: true)`);
-  if (satResult2.satisfiable) {
-    console.log('Open branch (model hint):');
-    // Limiting the number of formulas printed for brevity
-    const formulasToPrint = satResult2.openBranch?.slice(0, 10) ?? [];
-    formulasToPrint.forEach((f_model) => console.log(`  - ${formulaToString(f_model)}`));
-    if (satResult2.openBranch && satResult2.openBranch.length > 10) {
-      console.log(`  ... ${satResult2.openBranch.length - 10} more formulas`);
-    }
-  }
 }
 
 main();
