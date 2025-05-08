@@ -145,7 +145,7 @@ export const isClosed = (branch: Formula[]): boolean =>
       )
   );
 
-function findRule<T extends Formula>(f: Formula): FormulaRule | undefined {
+function findRule(f: Formula): FormulaRule | undefined {
   return formulaRules.find((r) => r.matches(f));
 }
 
