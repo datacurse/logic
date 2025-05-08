@@ -24,21 +24,28 @@ const isAtomic = (formula: Formula): boolean =>
 const isClosed = (branch: Formula[]): boolean =>
   branch.some(
     (f1) =>
-      f1.type === 'proposition' &&
+      f1.type === 'proposition' && // First, find a proposition p
       branch.some(
         (f2) =>
-          f2.type === 'negation' &&
-          f2.formula.type === 'proposition' &&
-          f2.formula.symbol === f1.symbol
+          f2.type === 'negation' && // Then, find a negation
+          f2.formula.type === 'proposition' && // Make sure it's negating a proposition
+          f2.formula.symbol === f1.symbol // Check if it's negating the SAME proposition
       )
   );
 
 const isAlpha = (formula: Formula): boolean =>
+  // p∧q
+  // ¬(p∨q) ↔ ¬p∧¬q
+  // ¬(p→q) ↔ p∧¬q
+  // ¬¬p ↔ p
   formula.type === 'conjunction' ||
   (formula.type === 'negation' &&
     ['disjunction', 'implication', 'negation'].includes(formula.formula.type));
 
 const isBeta = (formula: Formula): boolean =>
+  // p∨q
+  // p→q ↔ ¬p∨q
+  // ¬(p∧q) ↔ ¬p∨¬q
   ['disjunction', 'implication'].includes(formula.type) ||
   (formula.type === 'negation' && formula.formula.type === 'conjunction');
 
