@@ -1,21 +1,10 @@
 // ActionButtons.tsx
 import React from 'react';
 import { useSnapshot } from 'valtio';
-import { store } from '../calculator/store';
+import { startProof, store } from '../calculator/store';
 
 const ActionButtons: React.FC = () => {
   const snap = useSnapshot(store);
-
-  const handleStartProof = () => {
-    const parsedInput = store.parseInput();
-    if (parsedInput) {
-      // Assuming parsedInput contains premises and conclusion
-      const [premises, conclusion] = parsedInput;
-      // Initialize prover here and perform actions based on parsed input
-      console.log("Proof started with premises and conclusion:", premises, conclusion);
-      // You can implement the prover logic here or call another function
-    }
-  };
 
   const handleToggleStatus = () => {
     const statusButton = document.getElementById("statusbtn");
@@ -33,7 +22,7 @@ const ActionButtons: React.FC = () => {
   return (
     <div>
       <button id="statusbtn" onClick={handleToggleStatus}>stop</button>
-      <button onClick={handleStartProof}>Start Proof</button>
+      <button onClick={startProof} className='bg-green-500'>Start Proof</button>
     </div>
   );
 };

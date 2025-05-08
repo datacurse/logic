@@ -16,6 +16,7 @@ export default function Index() {
     <div>
       <h1>Tree Proof Generator</h1>
       <InputField />
+      <ActionButtons />
       <pre>{JSON.stringify(snapshot, null, 2)}</pre>
     </div>
   );
