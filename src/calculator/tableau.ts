@@ -85,17 +85,6 @@ declare global {
   }
 }
 
-// Add hashCode method to String prototype
-String.prototype.hashCode = function (): number {
-  let hash = 0;
-  for (let i = 0; i < this.length; i++) {
-    const char = this.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash = hash & hash; // Convert to 32bit integer
-  }
-  return hash;
-};
-
 // ================ Type Guards ===================
 
 export const isProposition = (f: Formula): f is Proposition => f.type === 'proposition';
