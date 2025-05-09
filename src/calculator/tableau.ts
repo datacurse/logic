@@ -210,17 +210,13 @@ function formulaEquals(f1: Formula, f2: Formula): boolean {
 // ================ Rule Definitions ===================
 
 type RuleType = 'alpha' | 'beta' | 'gamma' | 'delta';
-
-interface TableauContext {
-  terms: Term[];
-}
-
-interface FormulaRule {
+type TableauContext = { terms: Term[] };
+type FormulaRule = {
   ruleType: RuleType;
   description: string;
   matches(f: Formula): boolean;
   getComponents(f: Formula, context?: TableauContext): Formula[] | [Formula, Formula];
-}
+};
 
 const formulaRules: FormulaRule[] = [
   {
@@ -325,28 +321,21 @@ const isAtomic = (f: Formula): boolean =>
   isProposition(f) || isPredicate(f) || (isNegation(f) && (isProposition(f.formula) || isPredicate(f.formula)));
 
 function isClosed(branch: Formula[]): boolean {
-  const seenFormulas = new Set<string>();
-  // Collect atomic formulas and their negations
-  const atomicAndNegations = branch.filter(isAtomic);
+  const atomics = branch.filter(isAtomic);
 
-  for (const f of atomicAndNegations) {
-    const f_str = formulaToString(f);
+  for (const f of atomics) {
     if (isNegation(f)) {
-      // Check if the positive form exists in the branch
-      const positiveForm_str = formulaToString(f.formula);
-      if (seenFormulas.has(positiveForm_str)) {
-        return true; // Contradiction found
+      if (atomics.some((g) => !isNegation(g) && formulaEquals(g, f.formula))) {
+        return true;
       }
     } else {
-      // Check if the negated form exists in the branch
-      const negatedForm_str = formulaToString(not(f));
-      if (seenFormulas.has(negatedForm_str)) {
-        return true; // Contradiction found
+      if (atomics.some((g) => isNegation(g) && formulaEquals(g.formula, f))) {
+        return true;
       }
     }
-    seenFormulas.add(f_str);
   }
-  return false; // No contradiction found among atomic formulas
+
+  return false;
 }
 
 function findRule(f: Formula): FormulaRule | undefined {
@@ -393,154 +382,132 @@ function getComponents(f: Formula, context?: TableauContext): Formula[] | [Formu
 
 // ================ Tableau Construction ===================
 
-function buildTableau(premises: Formula[]): Formula[][] {
-  interface Branch {
-    formulas: Formula[];
-    gammaApplied: Set<string>;
-    deltaApplied: Set<string>;
-    betaApplied: Set<string>;
-  }
+interface Branch {
+  formulas: Formula[];
+  gammaApplied: { quantifier: Formula; instance: Formula }[];
+  deltaApplied: Formula[];
+  betaApplied: Formula[];
+}
 
+function buildTableau(premises: Formula[]): Formula[][] {
   let tableau: Branch[] = [
     {
       formulas: [...premises],
-      gammaApplied: new Set(),
-      deltaApplied: new Set(),
-      betaApplied: new Set(),
+      gammaApplied: [],
+      deltaApplied: [],
+      betaApplied: [],
     },
   ];
 
   let expanded = true;
   while (expanded) {
     expanded = false;
-    const nextTableau: Branch[] = [];
+    const next: Branch[] = [];
 
     for (const branch of tableau) {
-      // If branch already closed, keep as is
       if (isClosed(branch.formulas)) {
-        nextTableau.push(branch);
+        next.push(branch);
         continue;
       }
 
-      let branchExpanded = false;
+      let didExpand = false;
 
-      // --- ALPHA rules (no branch split) ---
-      for (const formula of branch.formulas) {
-        if (isAlpha(formula)) {
-          const comps = getAlphaComponents(formula);
-          const newOnes = comps.filter((c) => !branch.formulas.some((f) => formulaEquals(f, c)));
-          if (newOnes.length) {
-            nextTableau.push({
-              formulas: [...branch.formulas, ...newOnes],
-              gammaApplied: new Set(branch.gammaApplied),
-              deltaApplied: new Set(branch.deltaApplied),
-              betaApplied: new Set(branch.betaApplied),
+      // ALPHA
+      for (const f of branch.formulas) {
+        if (isAlpha(f)) {
+          const comps = getAlphaComponents(f).filter((c) => !branch.formulas.some((g) => formulaEquals(g, c)));
+          if (comps.length) {
+            next.push({
+              ...branch,
+              formulas: [...branch.formulas, ...comps],
             });
-            branchExpanded = expanded = true;
+            didExpand = expanded = true;
             break;
           }
         }
       }
-      if (branchExpanded) continue;
+      if (didExpand) continue;
 
-      // --- DELTA rules (∃) ---
-      for (const formula of branch.formulas) {
-        if (isDelta(formula)) {
-          const fStr = formulaToString(formula);
-          if (!branch.deltaApplied.has(fStr)) {
-            const terms = extractTerms(branch.formulas);
-            const [inst] = getDeltaComponents(formula, terms);
-            nextTableau.push({
-              formulas: [...branch.formulas, inst],
-              gammaApplied: new Set(branch.gammaApplied),
-              deltaApplied: new Set(branch.deltaApplied).add(fStr),
-              betaApplied: new Set(branch.betaApplied),
-            });
-            branchExpanded = expanded = true;
-            break;
-          }
-        }
-      }
-      if (branchExpanded) continue;
-
-      // --- GAMMA rules (∀) ---
-      for (const formula of branch.formulas) {
-        if (isGamma(formula)) {
+      // DELTA (∃)
+      for (const f of branch.formulas) {
+        if (isDelta(f) && !branch.deltaApplied.some((g) => formulaEquals(g, f))) {
           const terms = extractTerms(branch.formulas);
-          for (const inst of getGammaComponents(formula, terms)) {
-            const key = `${formulaToString(formula)}_${formulaToString(inst)}`;
-            if (!branch.gammaApplied.has(key) && !branch.formulas.some((f) => formulaEquals(f, inst))) {
-              nextTableau.push({
+          const [inst] = getDeltaComponents(f, terms);
+          next.push({
+            ...branch,
+            formulas: [...branch.formulas, inst],
+            deltaApplied: [...branch.deltaApplied, f],
+          });
+          didExpand = expanded = true;
+          break;
+        }
+      }
+      if (didExpand) continue;
+
+      // GAMMA (∀)
+      for (const f of branch.formulas) {
+        if (isGamma(f)) {
+          const terms = extractTerms(branch.formulas);
+          for (const inst of getGammaComponents(f, terms)) {
+            const already = branch.gammaApplied.some(
+              (pair) => formulaEquals(pair.quantifier, f) && formulaEquals(pair.instance, inst),
+            );
+            if (!already && !branch.formulas.some((g) => formulaEquals(g, inst))) {
+              next.push({
+                ...branch,
                 formulas: [...branch.formulas, inst],
-                gammaApplied: new Set(branch.gammaApplied).add(key),
-                deltaApplied: new Set(branch.deltaApplied),
-                betaApplied: new Set(branch.betaApplied),
+                gammaApplied: [...branch.gammaApplied, { quantifier: f, instance: inst }],
               });
-              branchExpanded = expanded = true;
+              didExpand = expanded = true;
               break;
             }
           }
-          if (branchExpanded) break;
+          if (didExpand) break;
         }
       }
-      if (branchExpanded) continue;
+      if (didExpand) continue;
 
-      // --- BETA rules (branch split) ---
-      for (const formula of branch.formulas) {
-        if (isBeta(formula)) {
-          const fStr = formulaToString(formula);
-          if (!branch.betaApplied.has(fStr)) {
-            const [leftComp, rightComp] = getBetaComponents(formula);
-            nextTableau.push({
-              formulas: [...branch.formulas, leftComp],
-              gammaApplied: new Set(branch.gammaApplied),
-              deltaApplied: new Set(branch.deltaApplied),
-              betaApplied: new Set(branch.betaApplied).add(fStr),
-            });
-            nextTableau.push({
-              formulas: [...branch.formulas, rightComp],
-              gammaApplied: new Set(branch.gammaApplied),
-              deltaApplied: new Set(branch.deltaApplied),
-              betaApplied: new Set(branch.betaApplied).add(fStr),
-            });
-            branchExpanded = expanded = true;
-            break;
-          }
+      // BETA (branch split)
+      for (const f of branch.formulas) {
+        if (isBeta(f) && !branch.betaApplied.some((g) => formulaEquals(g, f))) {
+          const [l, r] = getBetaComponents(f);
+          next.push({
+            ...branch,
+            formulas: [...branch.formulas, l],
+            betaApplied: [...branch.betaApplied, f],
+          });
+          next.push({
+            ...branch,
+            formulas: [...branch.formulas, r],
+            betaApplied: [...branch.betaApplied, f],
+          });
+          didExpand = expanded = true;
+          break;
         }
       }
-
-      if (!branchExpanded) {
-        // no applicable rule left
-        nextTableau.push(branch);
-      }
+      if (!didExpand) next.push(branch);
     }
 
-    tableau = nextTableau;
+    tableau = next;
   }
 
-  // return only the list of formulas on each branch
   return tableau.map((b) => b.formulas);
 }
 
 // ================ Satisfiability & Validity ===================
 
-function checkSatisfiability(formulas: Formula[]): {
-  satisfiable: boolean;
-  model?: Record<string, boolean>;
-} {
+function checkSatisfiability(formulas: Formula[]): { satisfiable: boolean; model?: Record<string, boolean> } {
   const tableau = buildTableau(formulas);
-
   for (const branch of tableau) {
     if (!isClosed(branch)) {
       const model: Record<string, boolean> = {};
       for (const f of branch) {
         if (isProposition(f)) model[f.symbol] = true;
-        else if (isNegation(f) && isProposition(f.formula)) model[f.formula.symbol] = false;
+        if (isNegation(f) && isProposition(f.formula)) model[f.formula.symbol] = false;
       }
       return { satisfiable: true, model };
     }
   }
-
   return { satisfiable: false };
 }
 
@@ -582,16 +549,17 @@ function printTableau(tableau: Formula[][]): void {
 }
 
 function testArgument(name: string, premises: Formula[], conclusion: Formula): void {
-  console.log(`Testing ${name}`);
-  premises.forEach((f) => console.log(`- ${formulaToString(f)}`));
-  console.log(`Conclusion: ${formulaToString(conclusion)}`);
+  console.log(`\n=== ${name} ===`);
+  premises.forEach((f) => console.log(`P: ${formulaToString(f)}`));
+  console.log(`C: ${formulaToString(conclusion)}`);
   console.log(`Valid? ${checkValidity(premises, conclusion)}`);
 }
 
 function main(): void {
-  const p = prop('p');
-  const q = prop('q');
-  const r = prop('r');
+  const p = prop('p'),
+    q = prop('q'),
+    r = prop('r');
+
   testArgument('p∨q, ¬p ⊢ q', [or(p, q), not(p)], q);
   testArgument('p→q, p ⊢ q', [implies(p, q), p], q);
   testArgument('p→q, ¬q ⊢ ¬p', [implies(p, q), not(q)], not(p));
