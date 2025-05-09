@@ -1,63 +1,15 @@
 // ================ Formula Types ===================
 
-interface Proposition {
-  type: 'proposition';
-  symbol: string;
-}
-
-interface Negation {
-  type: 'negation';
-  formula: Formula;
-}
-
-interface Conjunction {
-  type: 'conjunction';
-  left: Formula;
-  right: Formula;
-}
-
-interface Disjunction {
-  type: 'disjunction';
-  left: Formula;
-  right: Formula;
-}
-
-interface Implication {
-  type: 'implication';
-  left: Formula;
-  right: Formula;
-}
-
-interface Biconditional {
-  type: 'biconditional';
-  left: Formula;
-  right: Formula;
-}
-
-// First-order logic types
-interface Term {
-  type: 'term';
-  symbol: string;
-}
-
-interface Predicate {
-  type: 'predicate';
-  symbol: string;
-  terms: Term[];
-}
-
-interface Universal {
-  type: 'universal';
-  variable: string;
-  formula: Formula;
-}
-
-interface Existential {
-  type: 'existential';
-  variable: string;
-  formula: Formula;
-}
-
+type Proposition = { type: 'proposition'; symbol: string };
+type Negation = { type: 'negation'; formula: Formula };
+type Conjunction = { type: 'conjunction'; left: Formula; right: Formula };
+type Disjunction = { type: 'disjunction'; left: Formula; right: Formula };
+type Implication = { type: 'implication'; left: Formula; right: Formula };
+type Biconditional = { type: 'biconditional'; left: Formula; right: Formula };
+type Term = { type: 'term'; symbol: string };
+type Predicate = { type: 'predicate'; symbol: string; terms: Term[] };
+type Universal = { type: 'universal'; variable: string; formula: Formula };
+type Existential = { type: 'existential'; variable: string; formula: Formula };
 type Formula =
   | Proposition
   | Negation
@@ -85,7 +37,7 @@ function createTypeGuard<T extends Formula | Term>(type: T['type']): (f: Formula
 }
 
 function createNegatedTypeGuard<T extends Formula>(
-  isInnerType: (f: Formula) => f is T
+  isInnerType: (f: Formula) => f is T,
 ): (f: Formula) => f is Negation & { formula: T } {
   return (f: Formula): f is Negation & { formula: T } => isNegation(f) && isInnerType(f.formula);
 }
@@ -99,7 +51,6 @@ const isBiconditional = createTypeGuard<Biconditional>('biconditional');
 const isPredicate = createTypeGuard<Predicate>('predicate');
 const isUniversal = createTypeGuard<Universal>('universal');
 const isExistential = createTypeGuard<Existential>('existential');
-const isTerm = createTypeGuard<Term>('term');
 
 const isDoubleNegation = createNegatedTypeGuard<Negation>(isNegation);
 const isNegatedConjunction = createNegatedTypeGuard<Conjunction>(isConjunction);
@@ -113,44 +64,16 @@ const isNegatedExistential = createNegatedTypeGuard<Existential>(isExistential);
 
 const prop = (symbol: string): Proposition => ({ type: 'proposition', symbol });
 const not = (formula: Formula): Negation => ({ type: 'negation', formula });
-const and = (left: Formula, right: Formula): Conjunction => ({
-  type: 'conjunction',
-  left,
-  right,
-});
-const or = (left: Formula, right: Formula): Disjunction => ({
-  type: 'disjunction',
-  left,
-  right,
-});
-const implies = (left: Formula, right: Formula): Implication => ({
-  type: 'implication',
-  left,
-  right,
-});
-const iff = (left: Formula, right: Formula): Biconditional => ({
-  type: 'biconditional',
-  left,
-  right,
-});
+const and = (left: Formula, right: Formula): Conjunction => ({ type: 'conjunction', left, right });
+const or = (left: Formula, right: Formula): Disjunction => ({ type: 'disjunction', left, right });
+const implies = (left: Formula, right: Formula): Implication => ({ type: 'implication', left, right });
+const iff = (left: Formula, right: Formula): Biconditional => ({ type: 'biconditional', left, right });
 
 // First-order logic helpers
 const term = (symbol: string): Term => ({ type: 'term', symbol });
-const predicate = (symbol: string, terms: Term[]): Predicate => ({
-  type: 'predicate',
-  symbol,
-  terms,
-});
-const forAll = (variable: string, formula: Formula): Universal => ({
-  type: 'universal',
-  variable,
-  formula,
-});
-const exists = (variable: string, formula: Formula): Existential => ({
-  type: 'existential',
-  variable,
-  formula,
-});
+const predicate = (symbol: string, terms: Term[]): Predicate => ({ type: 'predicate', symbol, terms });
+const forAll = (variable: string, formula: Formula): Universal => ({ type: 'universal', variable, formula });
+const exists = (variable: string, formula: Formula): Existential => ({ type: 'existential', variable, formula });
 
 // ================ Term Utilities ===================
 
@@ -168,12 +91,7 @@ function extractTerms(formulas: Formula[]): Term[] {
       });
     } else if (isNegation(formula)) {
       collect(formula.formula);
-    } else if (
-      isConjunction(formula) ||
-      isDisjunction(formula) ||
-      isImplication(formula) ||
-      isBiconditional(formula)
-    ) {
+    } else if (isConjunction(formula) || isDisjunction(formula) || isImplication(formula) || isBiconditional(formula)) {
       collect(formula.left);
       collect(formula.right);
     } else if (isUniversal(formula) || isExistential(formula)) {
@@ -202,42 +120,43 @@ function freshConstant(existingTerms: Term[]): Term {
 // ================ Substitution ===================
 
 function substitute(formula: Formula, variable: string, termToSubstitute: Term): Formula {
-  if (isPredicate(formula)) {
-    const newTerms = formula.terms.map((t) => (t.symbol === variable ? termToSubstitute : t));
-    return predicate(formula.symbol, newTerms);
-  } else if (isProposition(formula)) {
-    return formula;
-  } else if (isNegation(formula)) {
-    return not(substitute(formula.formula, variable, termToSubstitute));
-  } else if (isConjunction(formula)) {
-    return and(
-      substitute(formula.left, variable, termToSubstitute),
-      substitute(formula.right, variable, termToSubstitute)
-    );
-  } else if (isDisjunction(formula)) {
-    return or(
-      substitute(formula.left, variable, termToSubstitute),
-      substitute(formula.right, variable, termToSubstitute)
-    );
-  } else if (isImplication(formula)) {
-    return implies(
-      substitute(formula.left, variable, termToSubstitute),
-      substitute(formula.right, variable, termToSubstitute)
-    );
-  } else if (isBiconditional(formula)) {
-    return iff(
-      substitute(formula.left, variable, termToSubstitute),
-      substitute(formula.right, variable, termToSubstitute)
-    );
-  } else if (isUniversal(formula)) {
-    if (formula.variable === variable) return formula; // The variable is bound by this quantifier
-    return forAll(formula.variable, substitute(formula.formula, variable, termToSubstitute));
-  } else if (isExistential(formula)) {
-    if (formula.variable === variable) return formula; // The variable is bound by this quantifier
-    return exists(formula.variable, substitute(formula.formula, variable, termToSubstitute));
+  switch (formula.type) {
+    case 'proposition':
+      return formula;
+    case 'predicate':
+      return {
+        ...formula,
+        terms: formula.terms.map((t) => (t.symbol === variable ? termToSubstitute : t)),
+      };
+    case 'negation':
+      return {
+        ...formula,
+        formula: substitute(formula.formula, variable, termToSubstitute),
+      };
+    case 'conjunction':
+    case 'disjunction':
+    case 'implication':
+    case 'biconditional': {
+      // for binary connectives, left/right both need substituting
+      const { left, right } = formula;
+      return {
+        ...formula,
+        left: substitute(left, variable, termToSubstitute),
+        right: substitute(right, variable, termToSubstitute),
+      };
+    }
+    case 'universal':
+    case 'existential':
+      // if the quantifier binds the same variable, leave it alone
+      if (formula.variable === variable) return formula;
+      return {
+        ...formula,
+        formula: substitute(formula.formula, variable, termToSubstitute),
+      };
+
+    default:
+      return formula;
   }
-  // If somehow a type not handled reaches here, return it as is (shouldn't happen with `Formula` type)
-  return formula;
 }
 
 function formulaEquals(f1: Formula, f2: Formula): boolean {
@@ -362,9 +281,7 @@ const formulaRules: FormulaRule[] = [
 // ================ Utilities ===================
 
 const isAtomic = (f: Formula): boolean =>
-  isProposition(f) ||
-  isPredicate(f) ||
-  (isNegation(f) && (isProposition(f.formula) || isPredicate(f.formula)));
+  isProposition(f) || isPredicate(f) || (isNegation(f) && (isProposition(f.formula) || isPredicate(f.formula)));
 
 function isClosed(branch: Formula[]): boolean {
   const seenFormulas = new Set<string>();
@@ -403,7 +320,7 @@ const isDelta = (f: Formula): boolean => findRule(f)?.ruleType === 'delta';
 function getComponentsForRule(
   f: Formula,
   ruleType: RuleType,
-  context?: TableauContext
+  context?: TableauContext,
 ): Formula[] | [Formula, Formula] {
   const rule = formulaRules.find((r) => r.matches(f) && r.ruleType === ruleType);
   if (!rule) {
@@ -412,55 +329,53 @@ function getComponentsForRule(
   return rule.getComponents(f, context);
 }
 
-export function getAlphaComponents(f: Formula): Formula[] {
+function getAlphaComponents(f: Formula): Formula[] {
   return getComponentsForRule(f, 'alpha') as Formula[];
 }
 
-export function getBetaComponents(f: Formula): [Formula, Formula] {
+function getBetaComponents(f: Formula): [Formula, Formula] {
   return getComponentsForRule(f, 'beta') as [Formula, Formula];
 }
 
-export function getGammaComponents(f: Formula, terms: Term[]): Formula[] {
+function getGammaComponents(f: Formula, terms: Term[]): Formula[] {
   return getComponentsForRule(f, 'gamma', { terms }) as Formula[];
 }
 
-export function getDeltaComponents(f: Formula, terms: Term[]): Formula[] {
+function getDeltaComponents(f: Formula, terms: Term[]): Formula[] {
   return getComponentsForRule(f, 'delta', { terms }) as Formula[];
 }
 
-export function getComponents(
-  f: Formula,
-  context?: TableauContext
-): Formula[] | [Formula, Formula] | undefined {
+function getComponents(f: Formula, context?: TableauContext): Formula[] | [Formula, Formula] | undefined {
   const rule = findRule(f);
   return rule ? rule.getComponents(f, context) : undefined;
 }
 
 // ================ Tableau Construction ===================
 
-interface Branch {
-  formulas: Formula[];
-  gammaApplied: Set<string>;
-  deltaApplied: Set<string>;
-  betaApplied: Set<string>;
-}
+function buildTableau(premises: Formula[]): Formula[][] {
+  interface Branch {
+    formulas: Formula[];
+    gammaApplied: Set<string>;
+    deltaApplied: Set<string>;
+    betaApplied: Set<string>;
+  }
 
-export function buildTableau(premises: Formula[]): Formula[][] {
   let tableau: Branch[] = [
     {
-      formulas: premises,
+      formulas: [...premises],
       gammaApplied: new Set(),
       deltaApplied: new Set(),
       betaApplied: new Set(),
     },
   ];
-  let expanded = true;
 
+  let expanded = true;
   while (expanded) {
     expanded = false;
     const nextTableau: Branch[] = [];
 
     for (const branch of tableau) {
+      // If branch already closed, keep as is
       if (isClosed(branch.formulas)) {
         nextTableau.push(branch);
         continue;
@@ -468,136 +383,107 @@ export function buildTableau(premises: Formula[]): Formula[][] {
 
       let branchExpanded = false;
 
-      // Apply alpha rules
+      // --- ALPHA rules (no branch split) ---
       for (const formula of branch.formulas) {
         if (isAlpha(formula)) {
-          const components = getAlphaComponents(formula);
-          const newFormulas = components.filter(
-            (comp) => !branch.formulas.some((f) => formulaEquals(f, comp))
-          );
-          if (newFormulas.length > 0) {
+          const comps = getAlphaComponents(formula);
+          const newOnes = comps.filter((c) => !branch.formulas.some((f) => formulaEquals(f, c)));
+          if (newOnes.length) {
             nextTableau.push({
-              formulas: [...branch.formulas, ...newFormulas],
+              formulas: [...branch.formulas, ...newOnes],
               gammaApplied: new Set(branch.gammaApplied),
               deltaApplied: new Set(branch.deltaApplied),
               betaApplied: new Set(branch.betaApplied),
             });
-            branchExpanded = true;
-            expanded = true;
-            break; // Move to the next branch after applying a rule
+            branchExpanded = expanded = true;
+            break;
           }
         }
       }
       if (branchExpanded) continue;
 
-      // Apply delta rules
+      // --- DELTA rules (∃) ---
       for (const formula of branch.formulas) {
-        if (isExistential(formula)) {
-          const formulaString = formulaToString(formula);
-          if (!branch.deltaApplied.has(formulaString)) {
+        if (isDelta(formula)) {
+          const fStr = formulaToString(formula);
+          if (!branch.deltaApplied.has(fStr)) {
             const terms = extractTerms(branch.formulas);
-            const freshTerm = freshConstant(terms);
-            const instantiated = substitute(formula.formula, formula.variable, freshTerm);
+            const [inst] = getDeltaComponents(formula, terms);
             nextTableau.push({
-              formulas: [...branch.formulas, instantiated],
+              formulas: [...branch.formulas, inst],
               gammaApplied: new Set(branch.gammaApplied),
-              deltaApplied: new Set([...branch.deltaApplied, formulaString]),
+              deltaApplied: new Set(branch.deltaApplied).add(fStr),
               betaApplied: new Set(branch.betaApplied),
             });
-            branchExpanded = true;
-            expanded = true;
-            break; // Move to the next branch
+            branchExpanded = expanded = true;
+            break;
           }
         }
       }
       if (branchExpanded) continue;
 
-      // Apply gamma rules
+      // --- GAMMA rules (∀) ---
       for (const formula of branch.formulas) {
-        if (isUniversal(formula)) {
+        if (isGamma(formula)) {
           const terms = extractTerms(branch.formulas);
-          if (terms.length > 0) {
-            for (const term of terms) {
-              const instantiated = substitute(formula.formula, formula.variable, term);
-              const key = `${formulaToString(formula)}_${formulaToString(instantiated)}`;
-              if (
-                !branch.gammaApplied.has(key) &&
-                !branch.formulas.some((f) => formulaEquals(f, instantiated))
-              ) {
-                nextTableau.push({
-                  formulas: [...branch.formulas, instantiated],
-                  gammaApplied: new Set([...branch.gammaApplied, key]),
-                  deltaApplied: new Set(branch.deltaApplied),
-                  betaApplied: new Set(branch.betaApplied),
-                });
-                branchExpanded = true;
-                expanded = true;
-                break; // Apply one instantiation at a time for simplicity
-              }
-            }
-            if (branchExpanded) break;
-          } else {
-            // If no terms exist, instantiate with a fresh constant once
-            const freshTerm = freshConstant([]);
-            const instantiated = substitute(formula.formula, formula.variable, freshTerm);
-            const key = `${formulaToString(formula)}_${formulaToString(instantiated)}`;
-            if (
-              !branch.gammaApplied.has(key) &&
-              !branch.formulas.some((f) => formulaEquals(f, instantiated))
-            ) {
+          for (const inst of getGammaComponents(formula, terms)) {
+            const key = `${formulaToString(formula)}_${formulaToString(inst)}`;
+            if (!branch.gammaApplied.has(key) && !branch.formulas.some((f) => formulaEquals(f, inst))) {
               nextTableau.push({
-                formulas: [...branch.formulas, instantiated],
-                gammaApplied: new Set([...branch.gammaApplied, key]),
+                formulas: [...branch.formulas, inst],
+                gammaApplied: new Set(branch.gammaApplied).add(key),
                 deltaApplied: new Set(branch.deltaApplied),
                 betaApplied: new Set(branch.betaApplied),
               });
-              branchExpanded = true;
-              expanded = true;
+              branchExpanded = expanded = true;
               break;
             }
           }
+          if (branchExpanded) break;
         }
       }
       if (branchExpanded) continue;
 
-      // Apply beta rules (split the branch)
+      // --- BETA rules (branch split) ---
       for (const formula of branch.formulas) {
         if (isBeta(formula)) {
-          const formulaString = formulaToString(formula);
-          if (!branch.betaApplied.has(formulaString)) {
-            const [comp1, comp2] = getBetaComponents(formula);
+          const fStr = formulaToString(formula);
+          if (!branch.betaApplied.has(fStr)) {
+            const [leftComp, rightComp] = getBetaComponents(formula);
             nextTableau.push({
-              formulas: [...branch.formulas, comp1],
+              formulas: [...branch.formulas, leftComp],
               gammaApplied: new Set(branch.gammaApplied),
               deltaApplied: new Set(branch.deltaApplied),
-              betaApplied: new Set([...branch.betaApplied, formulaString]),
+              betaApplied: new Set(branch.betaApplied).add(fStr),
             });
             nextTableau.push({
-              formulas: [...branch.formulas, comp2],
+              formulas: [...branch.formulas, rightComp],
               gammaApplied: new Set(branch.gammaApplied),
               deltaApplied: new Set(branch.deltaApplied),
-              betaApplied: new Set([...branch.betaApplied, formulaString]),
+              betaApplied: new Set(branch.betaApplied).add(fStr),
             });
-            branchExpanded = true;
-            expanded = true;
-            break; // Only apply one beta rule per iteration for simplicity
+            branchExpanded = expanded = true;
+            break;
           }
         }
       }
 
       if (!branchExpanded) {
-        nextTableau.push(branch); // If no rule applied, keep the branch as is
+        // no applicable rule left
+        nextTableau.push(branch);
       }
     }
+
     tableau = nextTableau;
   }
 
-  return tableau.map((branch) => branch.formulas);
+  // return only the list of formulas on each branch
+  return tableau.map((b) => b.formulas);
 }
 
 // ================ Satisfiability & Validity ===================
 
-export function checkSatisfiability(formulas: Formula[]): {
+function checkSatisfiability(formulas: Formula[]): {
   satisfiable: boolean;
   model?: Record<string, boolean>;
 } {
@@ -617,13 +503,13 @@ export function checkSatisfiability(formulas: Formula[]): {
   return { satisfiable: false };
 }
 
-export function checkValidity(premises: Formula[], conclusion: Formula): boolean {
+function checkValidity(premises: Formula[], conclusion: Formula): boolean {
   return !checkSatisfiability([...premises, not(conclusion)]).satisfiable;
 }
 
 // ================ Utilities & Testing ===================
 
-export function formulaToString(f: Formula): string {
+function formulaToString(f: Formula): string {
   switch (f.type) {
     case 'proposition':
       return f.symbol;
@@ -646,7 +532,7 @@ export function formulaToString(f: Formula): string {
   }
 }
 
-export function printTableau(tableau: Formula[][]): void {
+function printTableau(tableau: Formula[][]): void {
   tableau.forEach((branch, i) => {
     console.log(`Branch ${i + 1}:`);
     branch.forEach((f) => console.log(`- ${formulaToString(f)}`));
@@ -654,14 +540,14 @@ export function printTableau(tableau: Formula[][]): void {
   });
 }
 
-export function testArgument(name: string, premises: Formula[], conclusion: Formula): void {
+function testArgument(name: string, premises: Formula[], conclusion: Formula): void {
   console.log(`Testing ${name}`);
   premises.forEach((f) => console.log(`- ${formulaToString(f)}`));
   console.log(`Conclusion: ${formulaToString(conclusion)}`);
   console.log(`Valid? ${checkValidity(premises, conclusion)}`);
 }
 
-export function main(): void {
+function main(): void {
   const p = prop('p');
   const q = prop('q');
   const r = prop('r');
@@ -673,11 +559,7 @@ export function main(): void {
   const P = predicate('P', [term('x')]);
   const Q = predicate('Q', [term('x')]);
   testArgument('∀x P(x) ⊢ P(a)', [forAll('x', P)], substitute(P, 'x', term('a')));
-  testArgument(
-    '∃x P(x), ∀x (P(x) → Q(x)) ⊢ ∃x Q(x)',
-    [exists('x', P), forAll('x', implies(P, Q))],
-    exists('x', Q)
-  );
+  testArgument('∃x P(x), ∀x (P(x) → Q(x)) ⊢ ∃x Q(x)', [exists('x', P), forAll('x', implies(P, Q))], exists('x', Q));
 }
 
 main();
