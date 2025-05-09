@@ -77,44 +77,50 @@ const exists = (variable: string, formula: Formula): Existential => ({ type: 'ex
 
 // ================ Term Utilities ===================
 
+// Collects all distinct term symbols in the given formulas, then returns them as Term nodes.
 function extractTerms(formulas: Formula[]): Term[] {
   const symbols = new Set<string>();
-  const result: Term[] = [];
 
-  function collect(formula: Formula): void {
-    if (isPredicate(formula)) {
-      formula.terms.forEach((t) => {
-        if (!symbols.has(t.symbol)) {
-          symbols.add(t.symbol);
-          result.push(t);
-        }
-      });
-    } else if (isNegation(formula)) {
-      collect(formula.formula);
-    } else if (isConjunction(formula) || isDisjunction(formula) || isImplication(formula) || isBiconditional(formula)) {
-      collect(formula.left);
-      collect(formula.right);
-    } else if (isUniversal(formula) || isExistential(formula)) {
-      collect(formula.formula);
+  function visit(f: Formula): void {
+    switch (f.type) {
+      case 'predicate':
+        f.terms.forEach((t) => symbols.add(t.symbol));
+        break;
+      case 'negation':
+        visit(f.formula);
+        break;
+      case 'conjunction':
+      case 'disjunction':
+      case 'implication':
+      case 'biconditional':
+        visit(f.left);
+        visit(f.right);
+        break;
+      case 'universal':
+      case 'existential':
+        visit(f.formula);
+        break;
     }
-    // Propositions have no terms to extract
   }
 
-  formulas.forEach(collect);
-  return result;
+  formulas.forEach(visit);
+  return Array.from(symbols).map((symbol) => term(symbol));
 }
 
-function freshConstant(existingTerms: Term[]): Term {
-  const symbols = new Set(existingTerms.map((t) => t.symbol));
-  let counter = 1;
-  let symbol = `c${counter}`;
-
-  while (symbols.has(symbol)) {
-    counter++;
-    symbol = `c${counter}`;
+// Picks the next available constant name c1, c2, … by inspecting numeric suffixes of existing terms.
+function freshConstant(existing: Term[]): Term {
+  // collect all numeric suffixes from names matching /^c(\d+)$/
+  const used: number[] = [];
+  for (const t of existing) {
+    const m = t.symbol.match(/^c(\d+)$/);
+    if (m && m[1] !== undefined) {
+      used.push(parseInt(m[1], 10));
+    }
   }
 
-  return term(symbol);
+  // pick one higher than the current max, or 1 if none
+  const next = used.length > 0 ? Math.max(...used) + 1 : 1;
+  return term(`c${next}`);
 }
 
 // ================ Substitution ===================
@@ -160,10 +166,45 @@ function substitute(formula: Formula, variable: string, termToSubstitute: Term):
 }
 
 function formulaEquals(f1: Formula, f2: Formula): boolean {
-  // This is a structural equality check based on the string representation
-  // A more robust check would traverse the structure recursively.
-  // For tableau purposes, string equality is usually sufficient if string conversion is canonical.
-  return formulaToString(f1) === formulaToString(f2);
+  if (f1.type !== f2.type) return false;
+
+  switch (f1.type) {
+    case 'proposition':
+      return f1.symbol === (f2 as Proposition).symbol;
+
+    case 'predicate': {
+      const p2 = f2 as Predicate;
+      if (f1.terms.length !== p2.terms.length) return false;
+      return f1.terms.every((t, i) => {
+        const t2 = p2.terms[i];
+        // guard against undefined:
+        return t2 !== undefined && t.symbol === t2.symbol;
+      });
+    }
+
+    case 'negation':
+      return formulaEquals(f1.formula, (f2 as Negation).formula);
+
+    case 'conjunction':
+    case 'disjunction':
+    case 'implication':
+    case 'biconditional': {
+      const { left: l1, right: r1 } = f1 as Conjunction & Disjunction & Implication & Biconditional;
+      const { left: l2, right: r2 } = f2 as Conjunction & Disjunction & Implication & Biconditional;
+      return formulaEquals(l1, l2) && formulaEquals(r1, r2);
+    }
+
+    case 'universal':
+    case 'existential': {
+      const q1 = f1 as Universal | Existential;
+      const q2 = f2 as Universal | Existential;
+      return q1.variable === q2.variable && formulaEquals(q1.formula, q2.formula);
+    }
+
+    default:
+      // All Formula cases are covered above:
+      return false;
+  }
 }
 
 // ================ Rule Definitions ===================
